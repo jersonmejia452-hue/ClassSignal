@@ -15,11 +15,13 @@ Esta rebanada vertical incluye:
 - identificador anónimo persistente en `localStorage`;
 - una respuesta por identificador y sesión;
 - feed de respuestas y resumen porcentual en tiempo real;
+- mapa de confusión bajo demanda con GPT‑5.6 y Structured Outputs;
+- historial de análisis, caché por versión de respuestas y recomendaciones docentes;
 - validación en cliente con Zod y restricciones equivalentes en PostgreSQL;
 - migración con índices, privilegios explícitos y políticas RLS;
 - datos de demostración opcionales.
 
-Esta versión **no integra OpenAI, GPT ni ningún otro sistema de inteligencia artificial**. Tampoco genera todavía el mapa de confusión. Las respuestas permanecen en el proyecto de Supabase configurado y no se envían a un proveedor de IA.
+La IA no se ejecuta automáticamente: un profesor autenticado debe pulsar **Analizar sesión**. La Edge Function excluye correos, UUID de respuestas e identificadores anónimos, y envía a OpenAI únicamente el contexto académico, el estado de comprensión y el texto opcional de las dudas. La solicitud usa `store: false`.
 
 ## Stack
 
@@ -27,6 +29,8 @@ Esta versión **no integra OpenAI, GPT ni ningún otro sistema de inteligencia a
 - Tailwind CSS 4
 - React Router
 - Supabase Auth, Postgres y Realtime
+- Supabase Edge Functions
+- OpenAI Responses API con GPT‑5.6
 - `qrcode.react`
 - Zod
 
@@ -35,6 +39,7 @@ Esta versión **no integra OpenAI, GPT ni ningún otro sistema de inteligencia a
 - Node.js `^20.19.0` o `>=22.12.0`
 - npm
 - una cuenta y un proyecto vacío de Supabase
+- una API key de OpenAI con acceso a `gpt-5.6` para habilitar el mapa
 - dos navegadores o perfiles independientes para probar el flujo completo
 
 ## 1. Instalar dependencias
@@ -52,16 +57,17 @@ El repositorio incluye `package-lock.json`; `npm ci` conserva exactamente las ve
 3. Abre **SQL Editor** y crea una consulta nueva.
 4. Copia todo el contenido de [`supabase/migrations/20260714052159_initial_mvp_schema.sql`](supabase/migrations/20260714052159_initial_mvp_schema.sql) y ejecútalo una sola vez.
 
-La migración crea:
+Las migraciones crean:
 
 - `public.sessions` y `public.responses`;
 - restricciones de longitud, estados válidos y unicidad;
 - índices para sesiones del profesor y respuestas por sesión;
 - políticas RLS y privilegios separados para `authenticated` y `anon`;
 - la RPC pública y limitada `get_public_session`;
-- la publicación de `public.responses` en `supabase_realtime`.
+- la publicación de `public.responses` en `supabase_realtime`;
+- `public.session_analyses`, con historial inmutable, caché de snapshots y lectura limitada al profesor propietario.
 
-La migración está pensada para un proyecto nuevo. No vuelvas a ejecutarla completa sobre el mismo esquema: administra cambios posteriores con nuevas migraciones.
+Ejecuta los archivos de `supabase/migrations` en orden. No vuelvas a ejecutar la migración inicial completa sobre el mismo esquema: administra cambios posteriores con nuevas migraciones.
 
 ### Supabase local opcional
 
@@ -116,19 +122,39 @@ Completa `.env.local`:
 VITE_SUPABASE_URL=https://your-project-ref.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_key_here
 VITE_PUBLIC_APP_URL=http://localhost:5173
+OPENAI_API_KEY=sk-your-openai-api-key
 ```
 
-Las dos primeras variables son obligatorias. `VITE_PUBLIC_APP_URL` es opcional; define el origen que se incluirá en el enlace y el QR. Si se omite, la aplicación usa `window.location.origin`.
+Las dos primeras variables son obligatorias para la aplicación. `VITE_PUBLIC_APP_URL` es opcional; define el origen que se incluirá en el enlace y el QR. Si se omite, la aplicación usa `window.location.origin`.
+
+`OPENAI_API_KEY` es una variable exclusiva del servidor. No forma parte del bundle porque no tiene el prefijo `VITE_`. Para producción, añádela en **Supabase > Edge Functions > Secrets**. Nunca crees `VITE_OPENAI_API_KEY`.
 
 Obtén la URL y una **publishable key** desde la configuración de API del proyecto. Todas las variables con prefijo `VITE_` forman parte del bundle del navegador, por lo que:
 
 - usa únicamente una clave publicable (`sb_publishable_...`);
 - nunca copies una secret key, `service_role`, contraseña de base de datos ni token administrativo;
+- nunca expongas la API key de OpenAI en una variable `VITE_`, componente React o worker público;
 - no subas `.env.local`; ya está excluido por `.gitignore`.
 
 La clave publicable identifica el proyecto, pero no reemplaza la autorización: RLS determina qué filas puede leer o modificar cada cliente.
 
 Reinicia el servidor de Vite después de cambiar variables de entorno.
+
+### Desplegar la Edge Function
+
+Después de aplicar las migraciones, despliega la función autenticada:
+
+```bash
+npx supabase functions deploy analyze-session
+```
+
+Para desarrollo local, inicia Supabase y sirve la función con el mismo archivo privado de entorno:
+
+```bash
+npx supabase functions serve analyze-session --env-file .env.local
+```
+
+La función exige un JWT de profesor válido. Si falta `OPENAI_API_KEY`, el resto del MVP sigue funcionando y el panel muestra un error de configuración sin exponer secretos.
 
 ## 5. Ejecutar la aplicación
 
@@ -162,7 +188,7 @@ npm run preview  # vista local del build generado
 ```text
 src/
 ├── app/          # proveedores y router
-├── components/   # auth, layout, respuestas, sesiones y UI base
+├── components/   # análisis, auth, layout, respuestas, sesiones y UI base
 ├── context/      # sesión de autenticación docente
 ├── hooks/        # identificador anónimo y suscripción Realtime
 ├── lib/          # entorno, errores, formato y utilidades
@@ -173,6 +199,7 @@ src/
 └── types/        # tipos del dominio
 supabase/
 ├── config.toml   # configuración local de Supabase CLI
+├── functions/    # Edge Function autenticada para generar el mapa
 ├── migrations/  # esquema, RLS, privilegios, RPC y Realtime
 └── seed.sql      # demo opcional
 ```
@@ -188,8 +215,10 @@ Usa navegadores distintos o perfiles separados para que sus sesiones y `localSto
 5. En el **navegador B**, abre el enlace `/s/:codigo` o escanea el QR.
 6. Elige un estado, escribe una duda opcional y envíala.
 7. Sin recargar el navegador A, comprueba que aparezca la respuesta y cambien el total y los porcentajes.
-8. Intenta responder otra vez desde el mismo navegador B: debe mostrarse el límite de una respuesta por dispositivo y sesión.
-9. Finaliza la sesión desde el navegador A. Una carga nueva del enlace muestra la sesión cerrada y cualquier inserción posterior queda bloqueada por la base de datos.
+8. En el navegador A, pulsa **Analizar sesión** y comprueba que aparezcan el nivel de confusión, los conceptos y los próximos pasos.
+9. Envía otra respuesta desde un perfil distinto: el mapa anterior se marca como desactualizado hasta que pulses **Actualizar mapa**.
+10. Intenta responder otra vez desde el mismo navegador B: debe mostrarse el límite de una respuesta por dispositivo y sesión.
+11. Finaliza la sesión desde el navegador A. Una carga nueva del enlace muestra la sesión cerrada y cualquier inserción posterior queda bloqueada por la base de datos.
 
 Para simular varios estudiantes usa perfiles o navegadores independientes. Varias pestañas del mismo perfil comparten el identificador anónimo.
 
@@ -209,12 +238,16 @@ El seed asigna la demo al usuario Auth más antiguo y es repetible: los identifi
 - Los profesores usan Supabase Auth y el rol `authenticated`.
 - Las sesiones se autorizan con `professor_id = auth.uid()`; un profesor solo puede consultar, modificar o eliminar las propias.
 - Un profesor solo puede leer respuestas asociadas a sus propias sesiones.
+- Un profesor solo puede leer análisis de sus propias sesiones; el navegador no tiene privilegios para insertar ni modificar resultados de IA.
+- La función limita los análisis pagados por profesor y reutiliza resultados únicamente cuando coincide la huella SHA‑256 del contexto y las respuestas enviadas.
 - Los estudiantes permanecen sin autenticar y usan el rol `anon` mediante un cliente separado.
 - `anon` no tiene lectura directa de las tablas. La RPC `get_public_session` devuelve solamente los campos mínimos para la pantalla pública.
 - `anon` solo puede insertar las columnas necesarias de una respuesta y únicamente cuando la sesión está activa.
 - El código corto sirve para encontrar una sesión; no es la frontera de autorización. Esa frontera está en los privilegios y políticas RLS de PostgreSQL.
 - La combinación `(session_id, anonymous_id)` es única y evita una segunda respuesta normal desde el mismo navegador.
 - No existe ninguna clave privilegiada en el frontend.
+- La Edge Function valida el JWT y la propiedad de la sesión antes de usar su cliente servidor; `OPENAI_API_KEY` vive únicamente en secretos de Supabase.
+- Las dudas se tratan como datos no confiables para reducir prompt injection, y los conteos del mapa se derivan en servidor de referencias reales.
 
 El identificador del estudiante es un UUID aleatorio guardado en `localStorage`. No se solicita nombre, correo ni cuenta, y la interfaz docente no muestra ese UUID. Es un identificador seudónimo de baja fricción, no un mecanismo fuerte de identidad: borrar el almacenamiento local o cambiar de navegador genera otro identificador.
 
@@ -239,6 +272,14 @@ Confirma que la migración completa se ejecutó sin errores en el mismo proyecto
 ### El panel permanece en “Conectando”
 
 Comprueba que `public.responses` esté en `supabase_realtime`, que el profesor continúe autenticado y que el navegador permita WebSockets. El botón de actualizar realiza una consulta manual mientras revisas la conexión.
+
+### “El análisis con IA aún no está configurado”
+
+Añade `OPENAI_API_KEY` en **Supabase > Edge Functions > Secrets**. No la añadas a las variables públicas del sitio. No es necesario volver a compilar el frontend después de guardar el secreto.
+
+### OpenAI rechaza la credencial o aplica un límite temporal
+
+Verifica que la key esté activa, tenga acceso a `gpt-5.6` y que el proyecto de OpenAI tenga capacidad disponible. El historial registra el intento como fallido sin guardar detalles sensibles del proveedor; puedes volver a intentarlo desde el panel.
 
 ### El estudiante recibe “Ya enviaste una respuesta”
 
@@ -268,6 +309,5 @@ Crea primero un usuario mediante Supabase Auth. Si hay varios, la sesión perten
 2. Proyecta el QR y el código corto.
 3. Un estudiante responde desde su teléfono sin registrarse.
 4. El panel cambia en vivo y muestra la duda junto al nuevo porcentaje.
-5. El profesor finaliza la sesión y se bloquean nuevas respuestas.
-
-El siguiente paso del producto podrá analizar el conjunto de dudas y construir un mapa de confusión, pero esa capa queda deliberadamente fuera de este MVP.
+5. El profesor pulsa **Analizar sesión** y obtiene un mapa de confusión con evidencia y acciones sugeridas.
+6. El profesor finaliza la sesión y se bloquean nuevas respuestas.

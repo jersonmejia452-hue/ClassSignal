@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ArrowLeft, PauseCircle, PlayCircle, Radio, RefreshCw } from 'lucide-react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 
+import { ConfusionMapPanel } from '../../components/analysis/ConfusionMapPanel'
 import { ResponseFeed } from '../../components/responses/ResponseFeed'
 import { ResponseSummary } from '../../components/responses/ResponseSummary'
 import { ShareSessionCard } from '../../components/sessions/ShareSessionCard'
@@ -9,6 +10,7 @@ import { SessionStatusBadge } from '../../components/sessions/SessionStatusBadge
 import { Alert } from '../../components/ui/Alert'
 import { Button } from '../../components/ui/Button'
 import { EmptyState } from '../../components/ui/EmptyState'
+import { useSessionAnalyses } from '../../hooks/useSessionAnalyses'
 import { useSessionResponses } from '../../hooks/useSessionResponses'
 import { cn } from '../../lib/cn'
 import { getErrorMessage } from '../../lib/errors'
@@ -17,7 +19,10 @@ import {
   getSessionById,
   setSessionActive,
 } from '../../services/sessions.service'
-import type { ClassSession } from '../../types/domain'
+import {
+  analysisResponseLimit,
+  type ClassSession,
+} from '../../types/domain'
 
 interface DetailLocationState {
   justCreated?: boolean
@@ -40,6 +45,16 @@ export function SessionDetailPage() {
     realtimeStatus,
     refresh,
   } = useSessionResponses(session?.id)
+
+  const {
+    analyses,
+    latestRun: latestAnalysisRun,
+    latestCompleted: latestCompletedAnalysis,
+    isLoading: isLoadingAnalyses,
+    isAnalyzing,
+    error: analysisError,
+    runAnalysis,
+  } = useSessionAnalyses(session?.id)
 
   useEffect(() => {
     let isMounted = true
@@ -187,6 +202,21 @@ export function SessionDetailPage() {
 
       <div className="mt-10">
         <ResponseSummary responses={responses} />
+      </div>
+
+      <div className="mt-10">
+        <ConfusionMapPanel
+          analyses={analyses}
+          analysis={latestCompletedAnalysis}
+          error={analysisError}
+          isAnalyzing={isAnalyzing}
+          isLoading={isLoadingAnalyses}
+          latestResponseAt={responses[0]?.created_at ?? null}
+          latestRun={latestAnalysisRun}
+          onAnalyze={runAnalysis}
+          responseCount={Math.min(responses.length, analysisResponseLimit)}
+          responsesReady={!isLoadingResponses && !responsesError}
+        />
       </div>
 
       <section className="mt-10" aria-labelledby="responses-title">

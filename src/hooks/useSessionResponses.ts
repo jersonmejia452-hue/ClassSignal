@@ -79,7 +79,9 @@ export function useSessionResponses(sessionId: string | undefined) {
 
   return {
     responses,
-    isLoading,
+    isLoading: isLoading || Boolean(
+      sessionId && activeSessionId.current !== sessionId
+    ),
     error,
     realtimeStatus,
     refresh,

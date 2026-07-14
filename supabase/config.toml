@@ -37,7 +37,6 @@ api_url = "http://127.0.0.1"
 enabled = true
 port = 55324
 
-# Storage and Edge Functions are outside this MVP and stay disabled locally.
 [storage]
 enabled = false
 file_size_limit = "50MiB"
@@ -73,10 +72,13 @@ template = "Your code is {{ .Code }}"
 max_frequency = "5s"
 
 [edge_runtime]
-enabled = false
+enabled = true
 policy = "per_worker"
 inspector_port = 8183
 deno_version = 2
+
+[functions.analyze-session]
+verify_jwt = true
 
 [analytics]
 enabled = false
