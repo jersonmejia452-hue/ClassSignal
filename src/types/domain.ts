@@ -5,6 +5,7 @@ export type UnderstandingStatus = (typeof understandingStatuses)[number]
 export interface ClassSession {
   id: string
   professor_id: string
+  course_id: string | null
   code: string
   title: string
   subject: string
@@ -13,6 +14,22 @@ export interface ClassSession {
   created_at: string
   updated_at: string
   ended_at: string | null
+}
+
+export interface Course {
+  id: string
+  professor_id: string
+  name: string
+  subject: string
+  description: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CourseDraft {
+  name: string
+  subject: string
+  description?: string | null
 }
 
 export interface PublicClassSession {
@@ -37,6 +54,7 @@ export interface SessionDraft {
   title: string
   subject: string
   topic: string
+  courseId?: string | null
 }
 
 export interface ResponseDraft {

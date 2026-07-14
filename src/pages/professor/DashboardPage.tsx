@@ -1,111 +1,180 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CalendarPlus2, Plus, RefreshCw } from 'lucide-react'
+import { BookOpenCheck, Plus, RadioTower, RefreshCw, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
+import { CourseCard } from '../../components/courses/CourseCard'
 import { SessionCard } from '../../components/sessions/SessionCard'
 import { Alert } from '../../components/ui/Alert'
 import { Button } from '../../components/ui/Button'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { useAuth } from '../../context/AuthContext'
 import { getErrorMessage } from '../../lib/errors'
+import { getMyCourses } from '../../services/courses.service'
 import { getMySessions } from '../../services/sessions.service'
-import type { ClassSession } from '../../types/domain'
+import type { ClassSession, Course } from '../../types/domain'
 
 export function DashboardPage() {
   const { user } = useAuth()
+  const [courses, setCourses] = useState<Course[]>([])
   const [sessions, setSessions] = useState<ClassSession[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const loadSessions = useCallback(async () => {
+  const loadDashboard = useCallback(async () => {
     if (!user) return
 
     setIsLoading(true)
     setError(null)
     try {
-      setSessions(await getMySessions(user.id))
+      const [courseResult, sessionResult] = await Promise.all([
+        getMyCourses(user.id),
+        getMySessions(user.id),
+      ])
+      setCourses(courseResult)
+      setSessions(sessionResult)
     } catch (loadError) {
-      setError(getErrorMessage(loadError, 'No pudimos cargar tus sesiones.'))
+      setError(getErrorMessage(loadError, 'No pudimos cargar tus cursos.'))
     } finally {
       setIsLoading(false)
     }
   }, [user])
 
   useEffect(() => {
-    void loadSessions()
-  }, [loadSessions])
+    void loadDashboard()
+  }, [loadDashboard])
 
   const activeCount = sessions.filter((session) => session.is_active).length
+  const unassignedSessions = sessions.filter((session) => !session.course_id)
+  const teacherName = user?.email?.split('@')[0] || 'docente'
 
   return (
     <div>
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs font-extrabold tracking-[0.14em] text-blue-700 uppercase">
-            Panel docente
+      <section className="relative overflow-hidden rounded-[1.65rem] bg-[#071a2b] px-6 py-7 text-white shadow-[0_22px_65px_rgba(7,26,43,0.18)] sm:px-8 sm:py-9 lg:px-10">
+        <div className="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_top_right,rgba(49,92,246,0.42),transparent_62%)]" aria-hidden="true" />
+        <div className="absolute top-7 right-7 hidden items-end gap-2 opacity-45 sm:flex" aria-hidden="true">
+          {[28, 58, 42, 76, 52, 88, 64].map((height, index) => (
+            <span className="w-2 rounded-full bg-[#66e2d1]" key={`${height}-${index}`} style={{ height }} />
+          ))}
+        </div>
+
+        <div className="relative max-w-3xl">
+          <p className="text-xs font-extrabold tracking-[0.16em] text-[#87eadc] uppercase">
+            Panel docente · {teacherName}
           </p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
-            Tus sesiones de clase
+          <h1 className="mt-3 max-w-2xl text-3xl leading-tight font-black tracking-[-0.04em] sm:text-5xl">
+            Tus cursos, sus señales.
           </h1>
-          <p className="mt-3 max-w-2xl leading-7 text-slate-600">
-            Crea un pulso de comprensión, comparte el código y observa las respuestas mientras llegan.
+          <p className="mt-4 max-w-xl text-base leading-7 text-slate-300">
+            Entra a un curso para abrir una clase, compartir el código y escuchar a todo el grupo en tiempo real.
           </p>
-        </div>
-        <Link className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 py-3 text-sm font-extrabold text-white shadow-sm hover:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600" to="/profesor/sesiones/nueva">
-          <Plus className="size-4" aria-hidden="true" />
-          Nueva sesión
-        </Link>
-      </div>
 
-      {!isLoading && sessions.length > 0 && (
-        <div className="mt-8 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
-          <p className="font-semibold text-slate-600">
-            <strong className="text-slate-950">{activeCount}</strong> {activeCount === 1 ? 'sesión activa' : 'sesiones activas'} de {sessions.length}
-          </p>
-          <Button className="min-h-10 px-3" disabled={isLoading} onClick={() => void loadSessions()} variant="ghost">
-            <RefreshCw className="size-4" aria-hidden="true" />
-            Actualizar
-          </Button>
-        </div>
-      )}
-
-      {error && (
-        <Alert className="mt-7" tone="error">
-          {error}
-          <button className="ml-1 font-extrabold underline underline-offset-2" onClick={() => void loadSessions()} type="button">
-            Reintentar
-          </button>
-        </Alert>
-      )}
-
-      {isLoading ? (
-        <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-label="Cargando sesiones" role="status">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <div className="h-64 animate-pulse rounded-2xl border border-slate-200 bg-white" key={index} />
-          ))}
-        </div>
-      ) : sessions.length === 0 && !error ? (
-        <div className="mt-8">
-          <EmptyState
-            action={(
-              <Link className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-blue-700 px-5 py-3 text-sm font-extrabold text-white hover:bg-blue-800" to="/profesor/sesiones/nueva">
-                <Plus className="size-4" aria-hidden="true" />
-                Crear mi primera sesión
-              </Link>
+          <div className="mt-7 flex flex-wrap items-center gap-3">
+            <Link className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-[#66e2d1] px-5 py-3 text-sm font-extrabold text-[#071a2b] transition hover:bg-[#87eadc] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" to="/profesor/cursos/nuevo">
+              <Plus className="size-4" aria-hidden="true" />
+              Crear curso
+            </Link>
+            {!isLoading && (
+              <div className="flex min-h-12 items-center gap-4 rounded-xl border border-white/10 bg-white/[0.06] px-4 text-sm font-bold text-slate-200">
+                <span>{courses.length} {courses.length === 1 ? 'curso' : 'cursos'}</span>
+                <span className="h-5 w-px bg-white/15" aria-hidden="true" />
+                <span className="inline-flex items-center gap-2">
+                  <span className="size-2 rounded-full bg-emerald-400" aria-hidden="true" />
+                  {activeCount} en vivo
+                </span>
+              </div>
             )}
-            icon={<CalendarPlus2 className="size-5" aria-hidden="true" />}
-            title="Todavía no tienes sesiones"
-          >
-            Empieza con una clase real. Solo necesitas un título, una materia y el tema que estás explicando.
-          </EmptyState>
+          </div>
         </div>
-      ) : (
-        <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {sessions.map((session) => (
-            <SessionCard key={session.id} session={session} />
-          ))}
+      </section>
+
+      <section className="mt-9" aria-labelledby="my-courses-title">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-extrabold tracking-[0.14em] text-blue-700 uppercase">
+              Tu espacio académico
+            </p>
+            <h2 className="mt-1 text-2xl font-black tracking-[-0.025em] text-[#071a2b]" id="my-courses-title">
+              Mis cursos
+            </h2>
+          </div>
+          {!isLoading && courses.length > 0 && (
+            <Button className="min-h-10 px-3" onClick={() => void loadDashboard()} variant="ghost">
+              <RefreshCw className="size-4" aria-hidden="true" />
+              Actualizar
+            </Button>
+          )}
         </div>
+
+        {error && (
+          <Alert className="mt-5" tone="error">
+            {error}
+            <button className="ml-1 font-extrabold underline underline-offset-2" onClick={() => void loadDashboard()} type="button">
+              Reintentar
+            </button>
+          </Alert>
+        )}
+
+        {isLoading ? (
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-label="Cargando cursos" role="status">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div className="h-72 animate-pulse rounded-[1.4rem] border border-slate-200 bg-white" key={index} />
+            ))}
+          </div>
+        ) : courses.length === 0 && !error ? (
+          <div className="mt-5">
+            <EmptyState
+              action={(
+                <Link className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-[#315cf6] px-5 py-3 text-sm font-extrabold text-white shadow-sm hover:bg-[#254bd4]" to="/profesor/cursos/nuevo">
+                  <Plus className="size-4" aria-hidden="true" />
+                  Crear mi primer curso
+                </Link>
+              )}
+              icon={<BookOpenCheck className="size-5" aria-hidden="true" />}
+              title="Empieza por tu primer curso"
+            >
+              Organiza una materia y luego crea dentro de ella cada clase que quieras medir con ClassSignal.
+            </EmptyState>
+          </div>
+        ) : (
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {courses.map((course) => (
+              <CourseCard
+                course={course}
+                key={course.id}
+                sessions={sessions.filter((session) => session.course_id === course.id)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {!isLoading && unassignedSessions.length > 0 && (
+        <section className="mt-12 border-t border-slate-200 pt-9" aria-labelledby="legacy-classes-title">
+          <div className="flex items-start gap-3">
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-slate-200 text-slate-600">
+              <RadioTower className="size-5" aria-hidden="true" />
+            </span>
+            <div>
+              <h2 className="text-xl font-black tracking-tight text-[#071a2b]" id="legacy-classes-title">
+                Clases anteriores sin curso
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-slate-600">
+                Conservamos las sesiones que ya habías creado antes de organizar ClassSignal por cursos.
+              </p>
+            </div>
+          </div>
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {unassignedSessions.map((session) => (
+              <SessionCard key={session.id} session={session} />
+            ))}
+          </div>
+        </section>
       )}
+
+      <div className="mt-12 flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm leading-6 text-blue-950">
+        <Sparkles className="mt-0.5 size-5 shrink-0 text-blue-700" aria-hidden="true" />
+        <p><strong>La lógica es simple:</strong> un curso agrupa tus clases; cada clase genera un enlace público y concentra sus señales, dudas y mapa de confusión.</p>
+      </div>
     </div>
   )
 }

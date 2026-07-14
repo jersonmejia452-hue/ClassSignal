@@ -1,12 +1,16 @@
-# Aula Clara
+# ClassSignal
 
-Aula Clara es un MVP educativo, mobile-first, para recoger el pulso de comprensión de una clase sin obligar a los estudiantes a crear una cuenta. Un profesor crea una sesión, comparte un código corto o un QR y recibe respuestas nuevas en tiempo real.
+ClassSignal es un MVP educativo mobile-first para conocer el pulso de comprensión de una clase sin obligar a los estudiantes a crear una cuenta. El profesor organiza su trabajo por cursos, abre una clase dentro del curso, comparte un código corto o QR y recibe señales anónimas en tiempo real.
+
+El modelo de navegación es **curso → clase (sesión) → señales**. Un curso conserva el contexto académico y agrupa sus clases; cada clase tiene su propio enlace público, estado, resumen y mapa de confusión.
 
 ## Alcance de esta versión
 
 Esta rebanada vertical incluye:
 
 - registro e inicio de sesión por correo para profesores con Supabase Auth;
+- creación de cursos con nombre, materia y descripción opcional;
+- vista de cada curso con sus clases y acceso directo para iniciar una nueva;
 - creación, cierre y reactivación de sesiones;
 - código público de seis caracteres y enlace/QR para estudiantes;
 - acceso estudiantil sin cuenta desde `/s/:codigo`;
@@ -59,7 +63,8 @@ El repositorio incluye `package-lock.json`; `npm ci` conserva exactamente las ve
 
 Las migraciones crean:
 
-- `public.sessions` y `public.responses`;
+- `public.courses`, `public.sessions` y `public.responses`;
+- relación opcional `sessions.course_id`, protegida por una clave foránea compuesta que impide asignar una clase al curso de otro profesor;
 - restricciones de longitud, estados válidos y unicidad;
 - índices para sesiones del profesor y respuestas por sesión;
 - políticas RLS y privilegios separados para `authenticated` y `anon`;
@@ -178,8 +183,11 @@ npm run preview  # vista local del build generado
 | --- | --- | --- |
 | `/` | Público | Redirige al panel del profesor |
 | `/profesor/login` | Público | Registro e inicio de sesión por correo |
-| `/profesor` | Profesor autenticado | Lista de sesiones propias |
-| `/profesor/sesiones/nueva` | Profesor autenticado | Creación de una sesión |
+| `/profesor` | Profesor autenticado | Inicio y lista de cursos propios |
+| `/profesor/cursos/nuevo` | Profesor autenticado | Creación de un curso |
+| `/profesor/curso/:courseId` | Profesor propietario | Detalle del curso y sus clases |
+| `/profesor/curso/:courseId/sesion/nueva` | Profesor propietario | Creación de una clase dentro del curso |
+| `/profesor/sesiones/nueva` | Profesor autenticado | Ruta compatible para crear una sesión sin curso |
 | `/profesor/sesion/:id` | Profesor propietario | QR, código, estado, resumen y respuestas en vivo |
 | `/s/:codigo` | Público, sin cuenta | Respuesta anónima del estudiante |
 
@@ -210,15 +218,16 @@ Usa navegadores distintos o perfiles separados para que sus sesiones y `localSto
 
 1. En el **navegador A**, abre `/profesor/login` y crea una cuenta docente.
 2. Si la confirmación de correo está activa, confirma la cuenta y vuelve a iniciar sesión.
-3. Crea una sesión con título, materia y tema.
-4. Mantén abierta la pantalla de detalle; debe mostrar código, QR, enlace y el indicador “En vivo”.
-5. En el **navegador B**, abre el enlace `/s/:codigo` o escanea el QR.
-6. Elige un estado, escribe una duda opcional y envíala.
-7. Sin recargar el navegador A, comprueba que aparezca la respuesta y cambien el total y los porcentajes.
-8. En el navegador A, pulsa **Analizar sesión** y comprueba que aparezcan el nivel de confusión, los conceptos y los próximos pasos.
-9. Envía otra respuesta desde un perfil distinto: el mapa anterior se marca como desactualizado hasta que pulses **Actualizar mapa**.
-10. Intenta responder otra vez desde el mismo navegador B: debe mostrarse el límite de una respuesta por dispositivo y sesión.
-11. Finaliza la sesión desde el navegador A. Una carga nueva del enlace muestra la sesión cerrada y cualquier inserción posterior queda bloqueada por la base de datos.
+3. Crea un curso y entra a su detalle.
+4. Crea una clase dentro del curso con título y tema.
+5. Mantén abierta la pantalla de detalle; debe mostrar código, QR, enlace y el indicador “En vivo”.
+6. En el **navegador B**, abre el enlace `/s/:codigo` o escanea el QR.
+7. Elige un estado, escribe una duda opcional y envíala.
+8. Sin recargar el navegador A, comprueba que aparezca la respuesta y cambien el total y los porcentajes.
+9. En el navegador A, pulsa **Analizar sesión** y comprueba que aparezcan el nivel de confusión, los conceptos y los próximos pasos.
+10. Envía otra respuesta desde un perfil distinto: el mapa anterior se marca como desactualizado hasta que pulses **Actualizar mapa**.
+11. Intenta responder otra vez desde el mismo navegador B: debe mostrarse el límite de una respuesta por dispositivo y sesión.
+12. Finaliza la sesión desde el navegador A. Una carga nueva del enlace muestra la sesión cerrada y cualquier inserción posterior queda bloqueada por la base de datos.
 
 Para simular varios estudiantes usa perfiles o navegadores independientes. Varias pestañas del mismo perfil comparten el identificador anónimo.
 
@@ -236,7 +245,9 @@ El seed asigna la demo al usuario Auth más antiguo y es repetible: los identifi
 ## Modelo de seguridad
 
 - Los profesores usan Supabase Auth y el rol `authenticated`.
+- Los cursos se autorizan con `professor_id = auth.uid()`; cada profesor solo puede crearlos, consultarlos, modificarlos o eliminarlos dentro de su cuenta.
 - Las sesiones se autorizan con `professor_id = auth.uid()`; un profesor solo puede consultar, modificar o eliminar las propias.
+- La clave foránea `(course_id, professor_id)` garantiza en la base de datos que una sesión solo pueda pertenecer a un curso del mismo profesor.
 - Un profesor solo puede leer respuestas asociadas a sus propias sesiones.
 - Un profesor solo puede leer análisis de sus propias sesiones; el navegador no tiene privilegios para insertar ni modificar resultados de IA.
 - La función limita los análisis pagados por profesor y reutiliza resultados únicamente cuando coincide la huella SHA‑256 del contexto y las respuestas enviadas.
@@ -305,9 +316,10 @@ Crea primero un usuario mediante Supabase Auth. Si hay varios, la sesión perten
 
 ## Guion corto de demostración
 
-1. El profesor entra y crea una sesión en menos de un minuto.
-2. Proyecta el QR y el código corto.
-3. Un estudiante responde desde su teléfono sin registrarse.
-4. El panel cambia en vivo y muestra la duda junto al nuevo porcentaje.
-5. El profesor pulsa **Analizar sesión** y obtiene un mapa de confusión con evidencia y acciones sugeridas.
-6. El profesor finaliza la sesión y se bloquean nuevas respuestas.
+1. El profesor entra a ClassSignal y crea un curso.
+2. Desde el curso inicia una clase en menos de un minuto.
+3. Proyecta el QR y el código corto.
+4. Un estudiante responde desde su teléfono sin registrarse.
+5. El panel cambia en vivo y muestra la duda junto al nuevo porcentaje.
+6. El profesor pulsa **Analizar sesión** y obtiene un mapa de confusión con evidencia y acciones sugeridas.
+7. El profesor finaliza la sesión y se bloquean nuevas respuestas.

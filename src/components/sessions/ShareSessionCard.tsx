@@ -41,8 +41,8 @@ export function ShareSessionCard({ session }: { session: ClassSession }) {
 
     try {
       await navigator.share({
-        title: `${session.title} · Aula Clara`,
-        text: `Comparte cómo va tu comprensión de ${session.topic}.`,
+        title: `${session.title} · ClassSignal`,
+        text: `Comparte de forma anónima cómo va tu comprensión de ${session.topic}.`,
         url: publicUrl,
       })
     } catch (error) {
@@ -63,7 +63,7 @@ export function ShareSessionCard({ session }: { session: ClassSession }) {
       <div className="grid gap-6 p-5 sm:grid-cols-[minmax(0,1fr)_10rem] sm:items-center sm:p-6">
         <div>
           <p className="text-xs font-extrabold tracking-[0.13em] text-slate-500 uppercase">
-            Código de la sesión
+            Código de la clase
           </p>
           <p className="mt-2 font-mono text-4xl font-black tracking-[0.16em] text-slate-950 sm:text-5xl">
             {session.code}
@@ -93,7 +93,7 @@ export function ShareSessionCard({ session }: { session: ClassSession }) {
             level="Q"
             marginSize={1}
             size={136}
-            title={`Código QR para la sesión ${session.code}`}
+            title={`Código QR para la clase ${session.code}`}
             value={publicUrl}
           />
         </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LayoutDashboard, LogOut, Plus } from 'lucide-react'
+import { BookOpenCheck, LogOut, Plus } from 'lucide-react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '../../context/AuthContext'
@@ -11,10 +11,10 @@ import { Button } from '../ui/Button'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   cn(
-    'inline-flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300',
+    'inline-flex min-h-11 items-center gap-2 rounded-xl px-3 py-2 text-sm font-extrabold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#66e2d1]',
     isActive
-      ? 'bg-white/12 text-white'
-      : 'text-blue-100 hover:bg-white/8 hover:text-white',
+      ? 'bg-white text-[#071a2b] shadow-sm'
+      : 'text-slate-300 hover:bg-white/8 hover:text-white',
   )
 
 export function ProfessorLayout() {
@@ -38,30 +38,30 @@ export function ProfessorLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="bg-[#0b1830] text-white shadow-[0_1px_0_rgba(255,255,255,0.08)]">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-3 sm:px-6 lg:px-8">
+    <div className="signal-shell min-h-screen bg-[#f4f7fb]">
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-[#071a2b]/96 text-white shadow-[0_8px_30px_rgba(7,26,43,0.12)] backdrop-blur-xl">
+        <div className="mx-auto flex min-h-[4.75rem] max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
           <Brand inverse to="/profesor" />
 
-          <div className="flex items-center gap-1 sm:gap-2">
-            <nav className="flex items-center" aria-label="Navegación del profesor">
+          <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+            <nav className="flex items-center gap-1" aria-label="Navegación del profesor">
               <NavLink className={navLinkClass} end to="/profesor">
-                <LayoutDashboard className="size-4" aria-hidden="true" />
-                <span className="sr-only sm:not-sr-only">Sesiones</span>
+                <BookOpenCheck className="size-4" aria-hidden="true" />
+                <span className="sr-only sm:not-sr-only">Mis cursos</span>
               </NavLink>
-              <NavLink className={navLinkClass} to="/profesor/sesiones/nueva">
+              <NavLink className={navLinkClass} to="/profesor/cursos/nuevo">
                 <Plus className="size-4" aria-hidden="true" />
-                <span className="sr-only sm:not-sr-only">Nueva sesión</span>
+                <span className="sr-only sm:not-sr-only">Nuevo curso</span>
               </NavLink>
             </nav>
 
-            <div className="mx-1 hidden h-7 w-px bg-white/15 md:block" />
-            <span className="hidden max-w-48 truncate text-xs font-medium text-blue-100 md:block">
+            <div className="mx-1 hidden h-7 w-px bg-white/15 lg:block" />
+            <span className="hidden max-w-40 truncate text-xs font-semibold text-slate-400 lg:block xl:max-w-56">
               {user?.email}
             </span>
             <Button
               aria-label="Cerrar sesión"
-              className="min-h-11 px-3 text-blue-100 hover:bg-white/10 hover:text-white"
+              className="min-h-11 px-3 text-slate-300 hover:bg-white/10 hover:text-white"
               disabled={isSigningOut}
               onClick={handleSignOut}
               variant="ghost"
@@ -79,7 +79,7 @@ export function ProfessorLayout() {
         </div>
       )}
 
-      <main className="mx-auto max-w-7xl px-4 py-7 sm:px-6 sm:py-10 lg:px-8">
+      <main className="relative mx-auto max-w-7xl px-4 py-7 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
         <Outlet />
       </main>
     </div>

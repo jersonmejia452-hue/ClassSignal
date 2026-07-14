@@ -14,6 +14,16 @@ const DashboardPage = lazy(() =>
     default: module.DashboardPage,
   })),
 )
+const NewCoursePage = lazy(() =>
+  import('../pages/professor/NewCoursePage').then((module) => ({
+    default: module.NewCoursePage,
+  })),
+)
+const CourseDetailPage = lazy(() =>
+  import('../pages/professor/CourseDetailPage').then((module) => ({
+    default: module.CourseDetailPage,
+  })),
+)
 const LoginPage = lazy(() =>
   import('../pages/professor/LoginPage').then((module) => ({
     default: module.LoginPage,
@@ -67,6 +77,18 @@ const router = createBrowserRouter([
               {
                 index: true,
                 element: <DashboardPage />,
+              },
+              {
+                path: 'cursos/nuevo',
+                element: <NewCoursePage />,
+              },
+              {
+                path: 'curso/:courseId',
+                element: <CourseDetailPage />,
+              },
+              {
+                path: 'curso/:courseId/sesion/nueva',
+                element: <NewSessionPage />,
               },
               {
                 path: 'sesiones/nueva',

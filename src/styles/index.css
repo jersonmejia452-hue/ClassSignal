@@ -1,15 +1,17 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Aptos", "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --color-ink: #0b1830;
+  --font-sans: "Manrope", "Aptos", "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --color-ink: #071a2b;
+  --color-signal: #315cf6;
+  --color-pulse: #16b8a6;
 }
 
 @layer base {
   :root {
     font-family: var(--font-sans);
     color: #172033;
-    background: #f8fafc;
+    background: #f4f7fb;
     font-synthesis: none;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
@@ -23,7 +25,7 @@
   html {
     min-width: 320px;
     min-height: 100%;
-    background: #f8fafc;
+    background: #f4f7fb;
   }
 
   body {
@@ -46,25 +48,35 @@
 
   ::selection {
     color: #ffffff;
-    background: #1d4ed8;
+    background: #315cf6;
   }
 }
 
 @layer components {
+  .signal-shell {
+    background-color: #f4f7fb;
+    background-image:
+      linear-gradient(rgb(49 92 246 / 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(49 92 246 / 0.025) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
   .form-input {
     width: 100%;
     min-height: 3rem;
     border: 1px solid #cbd5e1;
-    border-radius: 0.75rem;
+    border-radius: 0.875rem;
     background: #ffffff;
     padding: 0.6875rem 1rem;
     color: #0f172a;
     font-size: 1rem;
     line-height: 1.5rem;
     outline: none;
+    box-shadow: 0 1px 2px rgb(7 26 43 / 0.025);
     transition:
       border-color 140ms ease,
-      box-shadow 140ms ease;
+      box-shadow 140ms ease,
+      background-color 140ms ease;
   }
 
   .form-input::placeholder {
@@ -76,8 +88,8 @@
   }
 
   .form-input:focus {
-    border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgb(37 99 235 / 14%);
+    border-color: #315cf6;
+    box-shadow: 0 0 0 3px rgb(49 92 246 / 13%);
   }
 
   .form-input[aria-invalid="true"] {

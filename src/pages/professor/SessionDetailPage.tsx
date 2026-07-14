@@ -61,7 +61,7 @@ export function SessionDetailPage() {
 
     const loadSession = async () => {
       if (!id) {
-        setSessionError('La sesión solicitada no es válida.')
+        setSessionError('La clase solicitada no es válida.')
         setIsLoadingSession(false)
         return
       }
@@ -77,7 +77,7 @@ export function SessionDetailPage() {
       } catch (error) {
         if (!isMounted) return
         setSessionError(
-          getErrorMessage(error, 'No pudimos cargar esta sesión.'),
+          getErrorMessage(error, 'No pudimos cargar esta clase.'),
         )
       } finally {
         if (isMounted) setIsLoadingSession(false)
@@ -100,7 +100,7 @@ export function SessionDetailPage() {
       setSession(await setSessionActive(session.id, !session.is_active))
     } catch (error) {
       setToggleError(
-        getErrorMessage(error, 'No pudimos cambiar el estado de la sesión.'),
+        getErrorMessage(error, 'No pudimos cambiar el estado de la clase.'),
       )
     } finally {
       setIsToggling(false)
@@ -123,12 +123,12 @@ export function SessionDetailPage() {
       <div>
         <Link className="inline-flex min-h-11 items-center gap-2 rounded-lg text-sm font-bold text-slate-600 hover:text-slate-950" to="/profesor">
           <ArrowLeft className="size-4" aria-hidden="true" />
-          Volver a sesiones
+          Volver a mis cursos
         </Link>
         <div className="mt-6">
           <EmptyState
             icon={<Radio className="size-5" aria-hidden="true" />}
-            title="No encontramos esta sesión"
+            title="No encontramos esta clase"
           >
             {sessionError || 'Puede que haya sido eliminada o pertenezca a otra cuenta docente.'}
           </EmptyState>
@@ -144,13 +144,13 @@ export function SessionDetailPage() {
 
   return (
     <div>
-      <Link className="inline-flex min-h-11 items-center gap-2 rounded-lg text-sm font-bold text-slate-600 hover:text-slate-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600" to="/profesor">
+      <Link className="inline-flex min-h-11 items-center gap-2 rounded-lg text-sm font-bold text-slate-600 hover:text-slate-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600" to={session.course_id ? `/profesor/curso/${session.course_id}` : '/profesor'}>
         <ArrowLeft className="size-4" aria-hidden="true" />
-        Volver a sesiones
+        {session.course_id ? 'Volver al curso' : 'Volver a mis cursos'}
       </Link>
 
       {locationState?.justCreated && (
-        <Alert className="mt-4" title="Sesión creada" tone="success">
+        <Alert className="mt-4" title="Clase creada" tone="success">
           Ya puedes proyectar el código o compartir el enlace con tus estudiantes.
         </Alert>
       )}
@@ -185,14 +185,14 @@ export function SessionDetailPage() {
           ) : (
             <PlayCircle className="size-4" aria-hidden="true" />
           )}
-          {session.is_active ? 'Finalizar sesión' : 'Reactivar sesión'}
+          {session.is_active ? 'Finalizar clase' : 'Reactivar clase'}
         </Button>
       </div>
 
       {toggleError && <Alert className="mt-5" tone="error">{toggleError}</Alert>}
       {!session.is_active && (
         <Alert className="mt-5">
-          La sesión está finalizada. El enlace seguirá mostrando el tema, pero no aceptará respuestas hasta que la reactives.
+          La clase está finalizada. El enlace seguirá mostrando el tema, pero no aceptará respuestas hasta que la reactives.
         </Alert>
       )}
 

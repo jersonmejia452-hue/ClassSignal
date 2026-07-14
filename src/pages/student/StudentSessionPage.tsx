@@ -56,7 +56,7 @@ export function StudentSessionPage() {
       } catch (error) {
         if (isMounted) {
           setLoadError(
-            getErrorMessage(error, 'No pudimos abrir esta sesión.'),
+            getErrorMessage(error, 'No pudimos abrir esta clase.'),
           )
         }
       } finally {
@@ -106,9 +106,9 @@ export function StudentSessionPage() {
       const errorCode = getErrorCode(error)
 
       if (errorCode === '23505') {
-        setSubmitError('Ya enviaste una respuesta desde este dispositivo para esta sesión.')
+        setSubmitError('Ya enviaste una respuesta desde este dispositivo para esta clase.')
       } else if (errorCode === '42501') {
-        setSubmitError('La sesión ya no está recibiendo respuestas.')
+        setSubmitError('La clase ya no está recibiendo respuestas.')
         setSession((current) => (current ? { ...current, is_active: false } : current))
       } else {
         setSubmitError(
@@ -122,9 +122,9 @@ export function StudentSessionPage() {
 
   if (isLoading) {
     return (
-      <main className="min-h-screen bg-slate-50">
+      <main className="signal-shell min-h-screen bg-[#f4f7fb]">
         <StudentHeader />
-        <div className="mx-auto max-w-xl px-5 py-10" aria-label="Cargando sesión" role="status">
+        <div className="mx-auto max-w-xl px-5 py-10" aria-label="Cargando clase" role="status">
           <div className="h-5 w-32 animate-pulse rounded bg-slate-200" />
           <div className="mt-5 h-10 w-4/5 animate-pulse rounded bg-slate-200" />
           <div className="mt-3 h-6 w-3/5 animate-pulse rounded bg-slate-100" />
@@ -136,14 +136,14 @@ export function StudentSessionPage() {
 
   if (!session) {
     return (
-      <main className="min-h-screen bg-slate-50">
+      <main className="signal-shell min-h-screen bg-[#f4f7fb]">
         <StudentHeader />
         <div className="mx-auto max-w-xl px-5 py-16 text-center">
           <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-slate-200 text-slate-600">
             <MessageSquareText className="size-6" aria-hidden="true" />
           </span>
           <p className="mt-6 text-xs font-extrabold tracking-[0.15em] text-blue-700 uppercase">Código {code.toUpperCase()}</p>
-          <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950">No encontramos esta sesión</h1>
+          <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950">No encontramos esta clase</h1>
           <p className="mt-4 leading-7 text-slate-600">
             {loadError || 'Revisa el enlace con tu profesor. Puede que el código esté incompleto o haya cambiado.'}
           </p>
@@ -153,10 +153,11 @@ export function StudentSessionPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 pb-10">
+    <main className="signal-shell min-h-screen bg-[#f4f7fb] pb-10">
       <StudentHeader />
 
       <div className="mx-auto max-w-xl px-5 py-8 sm:py-10">
+        <section className="rounded-[1.35rem] border border-slate-200 bg-white p-5 shadow-[0_10px_34px_rgba(7,26,43,0.055)] sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs font-extrabold tracking-[0.13em] text-blue-700 uppercase">
             {session.subject}
@@ -169,6 +170,7 @@ export function StudentSessionPage() {
           {session.title}
         </h1>
         <p className="mt-3 text-base leading-7 text-slate-600">{session.topic}</p>
+        </section>
 
         <div className="mt-6 flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-blue-950">
           <LockKeyhole className="mt-0.5 size-5 shrink-0 text-blue-700" aria-hidden="true" />
@@ -178,17 +180,17 @@ export function StudentSessionPage() {
         </div>
 
         {!session.is_active ? (
-          <section className="mt-7 rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm sm:p-9">
+          <section className="mt-7 rounded-[1.5rem] border border-slate-200 bg-white p-6 text-center shadow-[0_12px_38px_rgba(7,26,43,0.06)] sm:p-9">
             <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-slate-100 text-slate-600">
               <Clock3 className="size-6" aria-hidden="true" />
             </span>
-            <h2 className="mt-5 text-2xl font-black tracking-tight text-slate-950">La sesión está cerrada</h2>
+            <h2 className="mt-5 text-2xl font-black tracking-tight text-slate-950">La clase está cerrada</h2>
             <p className="mt-3 leading-7 text-slate-600">
-              El profesor ya finalizó la recepción de respuestas. Consulta con él si la sesión volverá a abrirse.
+              El profesor ya finalizó la recepción de respuestas. Consulta con él si la clase volverá a abrirse.
             </p>
           </section>
         ) : isSubmitted ? (
-          <section className="mt-7 rounded-3xl border border-emerald-200 bg-white p-6 text-center shadow-sm sm:p-9" aria-live="polite">
+          <section className="mt-7 rounded-[1.5rem] border border-emerald-200 bg-white p-6 text-center shadow-[0_12px_38px_rgba(7,26,43,0.06)] sm:p-9" aria-live="polite">
             <span className="mx-auto grid size-16 place-items-center rounded-2xl bg-emerald-50 text-emerald-700">
               <CheckCircle2 className="size-8" aria-hidden="true" />
             </span>
@@ -200,7 +202,7 @@ export function StudentSessionPage() {
             <p className="mt-5 text-sm font-semibold text-slate-500">Ya puedes cerrar esta página.</p>
           </section>
         ) : (
-          <form className="mt-7 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7" noValidate onSubmit={handleSubmit}>
+          <form className="mt-7 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-[0_14px_45px_rgba(7,26,43,0.07)] sm:p-7" noValidate onSubmit={handleSubmit}>
             <StatusSelector
               disabled={isSubmitting}
               error={errors.status}
@@ -239,7 +241,7 @@ export function StudentSessionPage() {
               {!isSubmitting && <ArrowRight className="size-4" aria-hidden="true" />}
             </Button>
             <p className="mt-3 text-center text-xs leading-5 text-slate-400">
-              Una respuesta por dispositivo en esta sesión.
+              Una respuesta por dispositivo en esta clase.
             </p>
           </form>
         )}
@@ -250,10 +252,13 @@ export function StudentSessionPage() {
 
 function StudentHeader() {
   return (
-    <header className="border-b border-white/10 bg-[#0b1830] text-white">
-      <div className="mx-auto flex max-w-xl items-center justify-between px-5 py-3">
+    <header className="border-b border-white/10 bg-[#071a2b] text-white shadow-[0_8px_25px_rgba(7,26,43,0.12)]">
+      <div className="mx-auto flex min-h-[4.75rem] max-w-xl items-center justify-between gap-3 px-5 py-3">
         <Brand inverse to="/" />
-        <span className="text-xs font-bold tracking-wide text-blue-100">Modo estudiante</span>
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold tracking-wide text-[#87eadc]">
+          <span className="size-1.5 rounded-full bg-[#66e2d1]" aria-hidden="true" />
+          Modo estudiante
+        </span>
       </div>
     </header>
   )

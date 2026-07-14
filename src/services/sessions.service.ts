@@ -39,6 +39,17 @@ export async function getSessionById(sessionId: string) {
   return data as ClassSession | null
 }
 
+export async function getSessionsByCourse(courseId: string) {
+  const { data, error } = await getTeacherSupabase()
+    .from('sessions')
+    .select('*')
+    .eq('course_id', courseId)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return (data ?? []) as ClassSession[]
+}
+
 export async function createSession(
   professorId: string,
   values: SessionDraft,
@@ -48,6 +59,7 @@ export async function createSession(
       .from('sessions')
       .insert({
         professor_id: professorId,
+        course_id: values.courseId ?? null,
         code: generateSessionCode(),
         title: values.title,
         subject: values.subject,

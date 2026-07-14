@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, RadioTower, ShieldCheck } from 'lucide-react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 
 import { Alert } from '../../components/ui/Alert'
@@ -88,68 +88,85 @@ export function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 lg:grid lg:grid-cols-[minmax(0,0.9fr)_minmax(32rem,1.1fr)]">
-      <section className="relative hidden overflow-hidden bg-[#0b1830] p-12 text-white lg:flex lg:min-h-screen lg:flex-col xl:p-16">
-        <div className="absolute -top-32 -left-32 size-96 rounded-full bg-blue-600/15 blur-3xl" aria-hidden="true" />
-        <div className="absolute right-[-8rem] bottom-[-8rem] size-96 rounded-full border border-white/10" aria-hidden="true" />
-        <Brand inverse to="/profesor/login" />
+    <main className="min-h-screen bg-[#f4f7fb] lg:grid lg:grid-cols-[minmax(34rem,1.08fr)_minmax(28rem,0.92fr)]">
+      <section className="relative hidden min-h-screen overflow-hidden bg-[#071a2b] text-white lg:flex lg:flex-col">
+        <img
+          alt="Docente usando ClassSignal con estudiantes universitarios durante una clase"
+          className="absolute inset-0 size-full object-cover object-center"
+          height="1400"
+          src="/brand/classsignal-login-hero.png"
+          width="1120"
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(7,26,43,0.26)_0%,rgba(7,26,43,0.38)_34%,rgba(7,26,43,0.96)_100%)]" aria-hidden="true" />
+        <div className="absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-[#071a2b]/70 to-transparent" aria-hidden="true" />
 
-        <div className="relative my-auto max-w-xl py-16">
-          <p className="text-xs font-extrabold tracking-[0.17em] text-blue-200 uppercase">
-            Para docentes
-          </p>
-          <h2 className="mt-5 text-5xl leading-[1.05] font-black tracking-[-0.045em] xl:text-6xl">
-            Escucha a toda la clase, incluso cuando nadie levanta la mano.
-          </h2>
-          <p className="mt-7 max-w-lg text-lg leading-8 text-slate-300">
-            Recoge señales anónimas de comprensión y dudas en tiempo real para decidir qué explicar a continuación.
-          </p>
+        <div className="relative z-10 flex h-full min-h-screen flex-col p-10 xl:p-14">
+          <Brand inverse to="/profesor/login" />
 
-          <div className="mt-10 grid max-w-lg gap-4 sm:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-5 backdrop-blur-sm">
-              <ShieldCheck className="size-5 text-blue-200" aria-hidden="true" />
-              <p className="mt-3 text-sm font-bold">Participación sin presión</p>
-              <p className="mt-1 text-sm leading-6 text-slate-400">Sin cuentas ni nombres para estudiantes.</p>
+          <div className="mt-auto max-w-2xl pb-4 pt-32">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-[#071a2b]/65 px-3 py-1.5 text-xs font-extrabold tracking-[0.13em] text-[#87eadc] uppercase backdrop-blur-md">
+              <span className="size-2 rounded-full bg-[#34d6c1] shadow-[0_0_0_4px_rgba(52,214,193,0.14)]" aria-hidden="true" />
+              Una señal en tiempo real
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-5 backdrop-blur-sm">
-              <ArrowRight className="size-5 text-blue-200" aria-hidden="true" />
-              <p className="mt-3 text-sm font-bold">Una señal accionable</p>
-              <p className="mt-1 text-sm leading-6 text-slate-400">Comprensión visible mientras la clase sucede.</p>
+            <h2 className="mt-6 max-w-xl text-5xl leading-[1.02] font-black tracking-[-0.05em] xl:text-6xl">
+              Escucha lo que la clase aún no dice.
+            </h2>
+            <p className="mt-6 max-w-xl text-lg leading-8 text-slate-200">
+              ClassSignal convierte respuestas anónimas en una lectura clara de la comprensión, mientras todavía puedes actuar.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3 text-sm font-bold text-white">
+              <span className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-[#071a2b]/55 px-3.5 py-2.5 backdrop-blur-md">
+                <ShieldCheck className="size-4 text-[#66e2d1]" aria-hidden="true" />
+                Participación anónima
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-[#071a2b]/55 px-3.5 py-2.5 backdrop-blur-md">
+                <RadioTower className="size-4 text-[#66e2d1]" aria-hidden="true" />
+                Pulso en vivo
+              </span>
             </div>
           </div>
         </div>
-
-        <p className="relative text-xs font-semibold tracking-wide text-slate-500">
-          OpenAI Build Week · MVP educativo
-        </p>
       </section>
 
-      <section className="flex min-h-screen items-center px-5 py-10 sm:px-8 lg:px-12">
+      <section className="flex min-h-screen items-center px-5 py-7 sm:px-8 sm:py-10 lg:px-12 xl:px-16">
         <div className="mx-auto w-full max-w-md">
-          <div className="mb-10 lg:hidden">
+          <div className="mb-7 lg:hidden">
             <Brand to="/profesor/login" />
+            <div className="relative mt-6 h-44 overflow-hidden rounded-[1.5rem] bg-[#071a2b] shadow-[0_18px_50px_rgba(7,26,43,0.18)]">
+              <img
+                alt=""
+                className="size-full object-cover object-[center_38%]"
+                height="360"
+                src="/brand/classsignal-login-hero.png"
+                width="720"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#071a2b]/85 via-transparent to-transparent" aria-hidden="true" />
+              <p className="absolute right-5 bottom-4 left-5 text-lg leading-6 font-black tracking-tight text-white">
+                La señal de toda tu clase, en un solo lugar.
+              </p>
+            </div>
           </div>
 
-          <p className="text-xs font-extrabold tracking-[0.15em] text-blue-700 uppercase">
-            Acceso docente
+          <p className="text-xs font-extrabold tracking-[0.16em] text-blue-700 uppercase">
+            Espacio docente
           </p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
-            {mode === 'signin' ? 'Bienvenido de nuevo' : 'Crea tu cuenta'}
+          <h1 className="mt-2 text-3xl font-black tracking-[-0.035em] text-[#071a2b] sm:text-4xl">
+            {mode === 'signin' ? 'Vuelve a tus cursos' : 'Empieza con ClassSignal'}
           </h1>
           <p className="mt-3 leading-7 text-slate-600">
             {mode === 'signin'
-              ? 'Entra para crear una sesión o revisar el pulso de tu clase.'
-              : 'Usa tu correo para empezar a recoger dudas anónimas.'}
+              ? 'Entra para abrir una clase y ver sus señales en tiempo real.'
+              : 'Crea tu cuenta docente y prepara tu primer curso.'}
           </p>
 
-          <div className="mt-7 grid grid-cols-2 rounded-xl bg-slate-100 p-1" role="group" aria-label="Tipo de acceso">
+          <div className="mt-7 grid grid-cols-2 rounded-2xl border border-slate-200 bg-slate-100/80 p-1" role="group" aria-label="Tipo de acceso">
             {(['signin', 'signup'] as AuthMode[]).map((item) => (
               <button
                 aria-pressed={mode === item}
                 className={cn(
-                  'min-h-11 rounded-lg px-3 text-sm font-extrabold transition focus-visible:outline-2 focus-visible:outline-blue-600',
+                  'min-h-11 rounded-xl px-3 text-sm font-extrabold transition focus-visible:outline-2 focus-visible:outline-blue-600',
                   mode === item
-                    ? 'bg-white text-slate-950 shadow-sm'
+                    ? 'bg-white text-[#071a2b] shadow-sm'
                     : 'text-slate-500 hover:text-slate-800',
                 )}
                 key={item}
@@ -218,14 +235,15 @@ export function LoginPage() {
               </Field>
 
               <Button fullWidth isLoading={isSubmitting} type="submit">
-                {mode === 'signin' ? 'Entrar al panel' : 'Crear cuenta docente'}
+                {mode === 'signin' ? 'Entrar a mis cursos' : 'Crear cuenta docente'}
                 {!isSubmitting && <ArrowRight className="size-4" aria-hidden="true" />}
               </Button>
             </form>
           )}
 
-          <p className="mt-7 text-center text-xs leading-5 text-slate-500">
-            El acceso docente se protege con Supabase Auth. Los estudiantes nunca necesitan una cuenta.
+          <p className="mt-7 flex items-start justify-center gap-2 text-center text-xs leading-5 text-slate-500">
+            <ShieldCheck className="mt-0.5 size-4 shrink-0 text-teal-600" aria-hidden="true" />
+            Supabase protege el acceso docente. Tus estudiantes participan sin crear una cuenta.
           </p>
         </div>
       </section>

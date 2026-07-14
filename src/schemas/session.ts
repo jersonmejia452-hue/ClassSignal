@@ -16,6 +16,11 @@ export const sessionSchema = z.object({
     .trim()
     .min(2, 'El tema debe tener al menos 2 caracteres.')
     .max(120, 'El tema no puede superar 120 caracteres.'),
+  courseId: z
+    .string()
+    .uuid('Selecciona un curso válido.')
+    .nullable()
+    .optional(),
 })
 
 export type SessionFormValues = z.infer<typeof sessionSchema>

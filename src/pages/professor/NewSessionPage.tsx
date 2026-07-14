@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { ArrowLeft, ArrowRight, BookOpenText, CheckCircle2, RadioTower } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { Alert } from '../../components/ui/Alert'
 import { Button } from '../../components/ui/Button'
@@ -8,7 +8,9 @@ import { Field } from '../../components/ui/Field'
 import { useAuth } from '../../context/AuthContext'
 import { getErrorMessage } from '../../lib/errors'
 import { sessionSchema } from '../../schemas/session'
+import { getCourseById } from '../../services/courses.service'
 import { createSession } from '../../services/sessions.service'
+import type { Course } from '../../types/domain'
 
 interface FormErrors {
   title?: string
@@ -19,6 +21,10 @@ interface FormErrors {
 export function NewSessionPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const { courseId } = useParams<{ courseId: string }>()
+  const [course, setCourse] = useState<Course | null>(null)
+  const [isLoadingCourse, setIsLoadingCourse] = useState(Boolean(courseId))
+  const [courseError, setCourseError] = useState<string | null>(null)
   const [title, setTitle] = useState('')
   const [subject, setSubject] = useState('')
   const [topic, setTopic] = useState('')
@@ -26,11 +32,51 @@ export function NewSessionPage() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  useEffect(() => {
+    let isMounted = true
+
+    const loadCourse = async () => {
+      if (!courseId) {
+        setIsLoadingCourse(false)
+        return
+      }
+
+      setIsLoadingCourse(true)
+      setCourseError(null)
+      try {
+        const result = await getCourseById(courseId)
+        if (!isMounted) return
+        if (!result) {
+          setCourseError('No encontramos este curso o no pertenece a tu cuenta.')
+          return
+        }
+        setCourse(result)
+        setSubject(result.subject)
+      } catch (error) {
+        if (isMounted) {
+          setCourseError(getErrorMessage(error, 'No pudimos cargar el curso.'))
+        }
+      } finally {
+        if (isMounted) setIsLoadingCourse(false)
+      }
+    }
+
+    void loadCourse()
+    return () => {
+      isMounted = false
+    }
+  }, [courseId])
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSubmitError(null)
 
-    const result = sessionSchema.safeParse({ title, subject, topic })
+    const result = sessionSchema.safeParse({
+      title,
+      subject,
+      topic,
+      courseId: course?.id ?? null,
+    })
     if (!result.success) {
       const fields = result.error.flatten().fieldErrors
       setErrors({
@@ -41,7 +87,7 @@ export function NewSessionPage() {
       return
     }
 
-    if (!user) return
+    if (!user || (courseId && !course)) return
     setErrors({})
     setIsSubmitting(true)
 
@@ -62,27 +108,30 @@ export function NewSessionPage() {
 
   return (
     <div>
-      <Link className="inline-flex min-h-11 items-center gap-2 rounded-lg text-sm font-bold text-slate-600 hover:text-slate-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600" to="/profesor">
+      <Link className="inline-flex min-h-11 items-center gap-2 rounded-lg text-sm font-bold text-slate-600 hover:text-slate-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600" to={course ? `/profesor/curso/${course.id}` : '/profesor'}>
         <ArrowLeft className="size-4" aria-hidden="true" />
-        Volver a sesiones
+        {course ? `Volver a ${course.name}` : 'Volver a mis cursos'}
       </Link>
 
       <div className="mt-4 grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
         <section>
           <p className="text-xs font-extrabold tracking-[0.14em] text-blue-700 uppercase">
-            Nueva sesión
+            Nueva clase
           </p>
           <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
-            Prepara el pulso de tu clase
+            Abre una nueva señal de clase
           </h1>
           <p className="mt-3 max-w-2xl leading-7 text-slate-600">
-            Estos datos ayudan a que el estudiante confirme que entró a la sesión correcta.
+            {course
+              ? `Esta clase quedará organizada dentro de ${course.name}.`
+              : 'Estos datos ayudan a que el estudiante confirme que entró a la clase correcta.'}
           </p>
 
           <form className="mt-8 space-y-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7" noValidate onSubmit={handleSubmit}>
+            {courseError && <Alert tone="error">{courseError}</Alert>}
             {submitError && <Alert tone="error">{submitError}</Alert>}
 
-            <Field error={errors.title} htmlFor="title" label="Título de la sesión" hint="Un nombre corto para reconocer esta clase en tu panel.">
+            <Field error={errors.title} htmlFor="title" label="Título de la clase" hint="Un nombre corto para reconocerla dentro del curso.">
               <input
                 aria-describedby={errors.title ? 'title-error' : 'title-hint'}
                 aria-invalid={Boolean(errors.title)}
@@ -96,7 +145,7 @@ export function NewSessionPage() {
               />
             </Field>
 
-            <Field error={errors.subject} htmlFor="subject" label="Materia">
+            <Field error={errors.subject} htmlFor="subject" label="Materia" hint={course ? 'La materia viene del curso seleccionado.' : undefined}>
               <input
                 aria-describedby={errors.subject ? 'subject-error' : undefined}
                 aria-invalid={Boolean(errors.subject)}
@@ -105,6 +154,7 @@ export function NewSessionPage() {
                 maxLength={80}
                 onChange={(event) => setSubject(event.target.value)}
                 placeholder="Ej. Cálculo diferencial"
+                readOnly={Boolean(course)}
                 value={subject}
               />
             </Field>
@@ -128,11 +178,11 @@ export function NewSessionPage() {
             </Field>
 
             <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:justify-end">
-              <Link className="inline-flex min-h-12 items-center justify-center rounded-xl px-4 text-sm font-bold text-slate-600 hover:bg-slate-100" to="/profesor">
+              <Link className="inline-flex min-h-12 items-center justify-center rounded-xl px-4 text-sm font-bold text-slate-600 hover:bg-slate-100" to={course ? `/profesor/curso/${course.id}` : '/profesor'}>
                 Cancelar
               </Link>
-              <Button isLoading={isSubmitting} type="submit">
-                Crear sesión
+              <Button disabled={isLoadingCourse || Boolean(courseError)} isLoading={isSubmitting} type="submit">
+                Crear clase
                 {!isSubmitting && <ArrowRight className="size-4" aria-hidden="true" />}
               </Button>
             </div>

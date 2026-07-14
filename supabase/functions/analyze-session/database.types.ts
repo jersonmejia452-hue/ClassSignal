@@ -12,6 +12,36 @@ export type Database = {
   };
   public: {
     Tables: {
+      courses: {
+        Row: {
+          created_at: string;
+          description: string | null;
+          id: string;
+          name: string;
+          professor_id: string;
+          subject: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          description?: string | null;
+          id?: string;
+          name: string;
+          professor_id?: string;
+          subject: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          description?: string | null;
+          id?: string;
+          name?: string;
+          professor_id?: string;
+          subject?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       responses: {
         Row: {
           anonymous_id: string;
@@ -102,6 +132,7 @@ export type Database = {
       sessions: {
         Row: {
           code: string;
+          course_id: string | null;
           created_at: string;
           ended_at: string | null;
           id: string;
@@ -114,6 +145,7 @@ export type Database = {
         };
         Insert: {
           code: string;
+          course_id?: string | null;
           created_at?: string;
           ended_at?: string | null;
           id?: string;
@@ -126,6 +158,7 @@ export type Database = {
         };
         Update: {
           code?: string;
+          course_id?: string | null;
           created_at?: string;
           ended_at?: string | null;
           id?: string;
@@ -136,7 +169,13 @@ export type Database = {
           topic?: string;
           updated_at?: string;
         };
-        Relationships: [];
+        Relationships: [{
+          foreignKeyName: "sessions_course_owner_fkey";
+          columns: ["course_id", "professor_id"];
+          isOneToOne: false;
+          referencedRelation: "courses";
+          referencedColumns: ["id", "professor_id"];
+        }];
       };
     };
     Views: { [_ in never]: never };

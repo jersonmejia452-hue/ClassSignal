@@ -16,18 +16,24 @@ export function Brand({ compact = false, to = '/', inverse = false }: BrandProps
         inverse ? 'focus-visible:outline-white' : 'focus-visible:outline-blue-600',
       )}
       to={to}
-      aria-label="Aula Clara, inicio"
+      aria-label="ClassSignal, inicio"
     >
       <span
         className={cn(
-          'grid size-10 shrink-0 place-items-center rounded-xl border text-sm font-extrabold tracking-[-0.04em] shadow-sm',
+          'grid size-11 shrink-0 place-items-center overflow-hidden rounded-[0.9rem] border shadow-sm',
           inverse
-            ? 'border-white/20 bg-white text-slate-950'
-            : 'border-blue-100 bg-blue-700 text-white',
+            ? 'border-white/15 bg-white'
+            : 'border-slate-200 bg-white',
         )}
         aria-hidden="true"
       >
-        AC
+        <img
+          alt=""
+          className="size-full object-cover"
+          height="44"
+          src="/brand/classsignal-mark.png"
+          width="44"
+        />
       </span>
       {!compact && (
         <span className="leading-none">
@@ -37,7 +43,7 @@ export function Brand({ compact = false, to = '/', inverse = false }: BrandProps
               inverse ? 'text-white' : 'text-slate-950',
             )}
           >
-            Aula Clara
+            Class<span className={inverse ? 'text-[#66e2d1]' : 'text-blue-600'}>Signal</span>
           </span>
           <span
             className={cn(
@@ -45,7 +51,7 @@ export function Brand({ compact = false, to = '/', inverse = false }: BrandProps
               inverse ? 'text-blue-100' : 'text-slate-500',
             )}
           >
-            Señales para enseñar mejor
+            La clase también habla
           </span>
         </span>
       )}
