@@ -13,7 +13,7 @@ export default {
       return response
     }
 
-    const indexUrl = new URL('/index.html', request.url)
+    const indexUrl = new URL('/', request.url)
     return env.ASSETS.fetch(new Request(indexUrl, request))
   },
 }
