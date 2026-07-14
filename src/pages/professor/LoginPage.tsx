@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, RadioTower, ShieldCheck } from 'lucide-react'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 
 import { Alert } from '../../components/ui/Alert'
 import { Brand } from '../../components/ui/Brand'
@@ -26,7 +26,6 @@ interface FormErrors {
 
 export function LoginPage() {
   const { user, isLoading: isRestoringSession } = useAuth()
-  const navigate = useNavigate()
   const location = useLocation()
   const state = location.state as LoginLocationState | null
   const destination = state?.from?.pathname || '/profesor'
@@ -71,12 +70,9 @@ export function LoginPage() {
     try {
       if (mode === 'signin') {
         await signInProfessor(result.data)
-        navigate(destination, { replace: true })
       } else {
         const data = await signUpProfessor(result.data)
-        if (data.session) {
-          navigate('/profesor', { replace: true })
-        } else {
+        if (!data.session) {
           setConfirmationEmail(result.data.email)
         }
       }

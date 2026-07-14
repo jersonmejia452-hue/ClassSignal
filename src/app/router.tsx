@@ -5,6 +5,7 @@ import { AppProviders } from './AppProviders'
 import { RequireProfessor } from '../components/auth/RequireProfessor'
 import { ProfessorLayout } from '../components/layout/ProfessorLayout'
 import { LoadingScreen } from '../components/ui/LoadingScreen'
+import { RouteErrorPage } from '../pages/RouteErrorPage'
 
 const NotFoundPage = lazy(() =>
   import('../pages/NotFoundPage').then((module) => ({ default: module.NotFoundPage })),
@@ -58,6 +59,7 @@ function RootProviders() {
 const router = createBrowserRouter([
   {
     element: <RootProviders />,
+    errorElement: <RouteErrorPage />,
     children: [
       {
         index: true,
