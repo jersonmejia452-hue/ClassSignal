@@ -1,0 +1,260 @@
+import { useEffect, useState, type FormEvent } from 'react'
+import { ArrowRight, CheckCircle2, Clock3, LockKeyhole, MessageSquareText } from 'lucide-react'
+import { useParams } from 'react-router-dom'
+
+import { StatusSelector } from '../../components/responses/StatusSelector'
+import { Alert } from '../../components/ui/Alert'
+import { Brand } from '../../components/ui/Brand'
+import { Button } from '../../components/ui/Button'
+import { useAnonymousId } from '../../hooks/useAnonymousId'
+import { getErrorCode, getErrorMessage } from '../../lib/errors'
+import { statusContent } from '../../lib/format'
+import { responseSchema } from '../../schemas/response'
+import { submitStudentResponse } from '../../services/responses.service'
+import { getPublicSession } from '../../services/sessions.service'
+import type {
+  PublicClassSession,
+  UnderstandingStatus,
+} from '../../types/domain'
+
+interface FormErrors {
+  status?: string
+  questionText?: string
+}
+
+export function StudentSessionPage() {
+  const { code = '' } = useParams<{ code: string }>()
+  const anonymousId = useAnonymousId()
+  const [session, setSession] = useState<PublicClassSession | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [status, setStatus] = useState<UnderstandingStatus | null>(null)
+  const [questionText, setQuestionText] = useState('')
+  const [submittedStatus, setSubmittedStatus] = useState<UnderstandingStatus | null>(null)
+  const [errors, setErrors] = useState<FormErrors>({})
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSubmitted, setIsSubmitted] = useState(false)
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadSession = async () => {
+      setSession(null)
+      setStatus(null)
+      setQuestionText('')
+      setSubmittedStatus(null)
+      setErrors({})
+      setSubmitError(null)
+      setIsSubmitted(false)
+      setIsLoading(true)
+      setLoadError(null)
+
+      try {
+        const result = await getPublicSession(code)
+        if (isMounted) setSession(result)
+      } catch (error) {
+        if (isMounted) {
+          setLoadError(
+            getErrorMessage(error, 'No pudimos abrir esta sesión.'),
+          )
+        }
+      } finally {
+        if (isMounted) setIsLoading(false)
+      }
+    }
+
+    void loadSession()
+
+    return () => {
+      isMounted = false
+    }
+  }, [code])
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setSubmitError(null)
+
+    const result = responseSchema.safeParse({
+      status: status ?? undefined,
+      questionText,
+    })
+
+    if (!result.success) {
+      const fields = result.error.flatten().fieldErrors
+      setErrors({
+        status: fields.status?.[0],
+        questionText: fields.questionText?.[0],
+      })
+      return
+    }
+
+    if (!session) return
+    setErrors({})
+    setIsSubmitting(true)
+
+    try {
+      await submitStudentResponse({
+        sessionId: session.id,
+        anonymousId,
+        status: result.data.status,
+        questionText: result.data.questionText,
+      })
+      setSubmittedStatus(result.data.status)
+      setIsSubmitted(true)
+    } catch (error) {
+      const errorCode = getErrorCode(error)
+
+      if (errorCode === '23505') {
+        setSubmitError('Ya enviaste una respuesta desde este dispositivo para esta sesión.')
+      } else if (errorCode === '42501') {
+        setSubmitError('La sesión ya no está recibiendo respuestas.')
+        setSession((current) => (current ? { ...current, is_active: false } : current))
+      } else {
+        setSubmitError(
+          getErrorMessage(error, 'No pudimos enviar tu respuesta. Intenta otra vez.'),
+        )
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <main className="min-h-screen bg-slate-50">
+        <StudentHeader />
+        <div className="mx-auto max-w-xl px-5 py-10" aria-label="Cargando sesión" role="status">
+          <div className="h-5 w-32 animate-pulse rounded bg-slate-200" />
+          <div className="mt-5 h-10 w-4/5 animate-pulse rounded bg-slate-200" />
+          <div className="mt-3 h-6 w-3/5 animate-pulse rounded bg-slate-100" />
+          <div className="mt-8 h-96 animate-pulse rounded-3xl border border-slate-200 bg-white" />
+        </div>
+      </main>
+    )
+  }
+
+  if (!session) {
+    return (
+      <main className="min-h-screen bg-slate-50">
+        <StudentHeader />
+        <div className="mx-auto max-w-xl px-5 py-16 text-center">
+          <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-slate-200 text-slate-600">
+            <MessageSquareText className="size-6" aria-hidden="true" />
+          </span>
+          <p className="mt-6 text-xs font-extrabold tracking-[0.15em] text-blue-700 uppercase">Código {code.toUpperCase()}</p>
+          <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950">No encontramos esta sesión</h1>
+          <p className="mt-4 leading-7 text-slate-600">
+            {loadError || 'Revisa el enlace con tu profesor. Puede que el código esté incompleto o haya cambiado.'}
+          </p>
+        </div>
+      </main>
+    )
+  }
+
+  return (
+    <main className="min-h-screen bg-slate-50 pb-10">
+      <StudentHeader />
+
+      <div className="mx-auto max-w-xl px-5 py-8 sm:py-10">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs font-extrabold tracking-[0.13em] text-blue-700 uppercase">
+            {session.subject}
+          </p>
+          <span className="rounded-lg bg-slate-200 px-2.5 py-1 font-mono text-xs font-extrabold tracking-[0.12em] text-slate-700">
+            {session.code}
+          </span>
+        </div>
+        <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+          {session.title}
+        </h1>
+        <p className="mt-3 text-base leading-7 text-slate-600">{session.topic}</p>
+
+        <div className="mt-6 flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-blue-950">
+          <LockKeyhole className="mt-0.5 size-5 shrink-0 text-blue-700" aria-hidden="true" />
+          <p>
+            <strong>Tu respuesta es anónima.</strong> No pedimos tu nombre, correo ni una cuenta.
+          </p>
+        </div>
+
+        {!session.is_active ? (
+          <section className="mt-7 rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm sm:p-9">
+            <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-slate-100 text-slate-600">
+              <Clock3 className="size-6" aria-hidden="true" />
+            </span>
+            <h2 className="mt-5 text-2xl font-black tracking-tight text-slate-950">La sesión está cerrada</h2>
+            <p className="mt-3 leading-7 text-slate-600">
+              El profesor ya finalizó la recepción de respuestas. Consulta con él si la sesión volverá a abrirse.
+            </p>
+          </section>
+        ) : isSubmitted ? (
+          <section className="mt-7 rounded-3xl border border-emerald-200 bg-white p-6 text-center shadow-sm sm:p-9" aria-live="polite">
+            <span className="mx-auto grid size-16 place-items-center rounded-2xl bg-emerald-50 text-emerald-700">
+              <CheckCircle2 className="size-8" aria-hidden="true" />
+            </span>
+            <p className="mt-6 text-xs font-extrabold tracking-[0.14em] text-emerald-700 uppercase">Respuesta enviada</p>
+            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">Gracias por decir cómo vas</h2>
+            <p className="mt-3 leading-7 text-slate-600">
+              Tu profesor ya puede ver la señal <strong>{submittedStatus ? statusContent[submittedStatus].label.toLowerCase() : ''}</strong>, sin saber quién la envió.
+            </p>
+            <p className="mt-5 text-sm font-semibold text-slate-500">Ya puedes cerrar esta página.</p>
+          </section>
+        ) : (
+          <form className="mt-7 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7" noValidate onSubmit={handleSubmit}>
+            <StatusSelector
+              disabled={isSubmitting}
+              error={errors.status}
+              onChange={setStatus}
+              value={status}
+            />
+
+            <div className="mt-7 border-t border-slate-100 pt-7">
+              <div className="flex items-baseline justify-between gap-3">
+                <label className="text-base font-extrabold text-slate-950" htmlFor="questionText">
+                  ¿Qué te genera duda? <span className="font-medium text-slate-400">(opcional)</span>
+                </label>
+                <span className="text-xs font-semibold text-slate-400">{questionText.length}/1000</span>
+              </div>
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                No necesitas formularla perfectamente. Escribe lo que te está costando.
+              </p>
+              <textarea
+                aria-describedby={errors.questionText ? 'questionText-error' : undefined}
+                aria-invalid={Boolean(errors.questionText)}
+                className="form-input mt-3 min-h-32 resize-y py-3"
+                disabled={isSubmitting}
+                id="questionText"
+                maxLength={1000}
+                onChange={(event) => setQuestionText(event.target.value)}
+                placeholder="Ej. No entiendo por qué el límite por la izquierda da un valor distinto…"
+                value={questionText}
+              />
+              {errors.questionText && <p className="mt-2 text-sm font-medium text-red-700" id="questionText-error">{errors.questionText}</p>}
+            </div>
+
+            {submitError && <Alert className="mt-6" tone="error">{submitError}</Alert>}
+
+            <Button className="mt-7" fullWidth isLoading={isSubmitting} type="submit">
+              Enviar de forma anónima
+              {!isSubmitting && <ArrowRight className="size-4" aria-hidden="true" />}
+            </Button>
+            <p className="mt-3 text-center text-xs leading-5 text-slate-400">
+              Una respuesta por dispositivo en esta sesión.
+            </p>
+          </form>
+        )}
+      </div>
+    </main>
+  )
+}
+
+function StudentHeader() {
+  return (
+    <header className="border-b border-white/10 bg-[#0b1830] text-white">
+      <div className="mx-auto flex max-w-xl items-center justify-between px-5 py-3">
+        <Brand inverse to="/" />
+        <span className="text-xs font-bold tracking-wide text-blue-100">Modo estudiante</span>
+      </div>
+    </header>
+  )
+}

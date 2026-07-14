@@ -1,0 +1,84 @@
+# Local Supabase configuration for the Vite development app.
+# Reference: https://supabase.com/docs/guides/local-development/cli/config
+project_id = "week-builder-open-ai"
+
+[api]
+enabled = true
+port = 55321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+# Intentionally omit auto_expose_new_tables so local development matches the
+# secure 2026 cloud default: Data API access requires explicit GRANT statements.
+
+[db]
+port = 55322
+shadow_port = 55320
+health_timeout = "2m"
+major_version = 17
+
+[db.migrations]
+enabled = true
+schema_paths = []
+
+[db.seed]
+enabled = true
+sql_paths = ["./seed.sql"]
+
+[realtime]
+enabled = true
+
+[studio]
+enabled = true
+port = 55323
+api_url = "http://127.0.0.1"
+
+[local_smtp]
+enabled = true
+port = 55324
+
+# Storage and Edge Functions are outside this MVP and stay disabled locally.
+[storage]
+enabled = false
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173/**"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+enable_anonymous_sign_ins = false
+enable_manual_linking = false
+minimum_password_length = 8
+password_requirements = ""
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+# Local Mailpit testing stays frictionless. Hosted projects enable email
+# confirmation by default and should configure redirects/custom SMTP separately.
+enable_confirmations = false
+secure_password_change = false
+max_frequency = "1s"
+otp_length = 6
+otp_expiry = 3600
+
+[auth.sms]
+enable_signup = false
+enable_confirmations = false
+template = "Your code is {{ .Code }}"
+max_frequency = "5s"
+
+[edge_runtime]
+enabled = false
+policy = "per_worker"
+inspector_port = 8183
+deno_version = 2
+
+[analytics]
+enabled = false
+port = 55327
+backend = "postgres"

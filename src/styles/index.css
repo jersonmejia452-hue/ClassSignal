@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Aptos", "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --color-ink: #0b1830;
+}
+
+@layer base {
+  :root {
+    font-family: var(--font-sans);
+    color: #172033;
+    background: #f8fafc;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    min-width: 320px;
+    min-height: 100%;
+    background: #f8fafc;
+  }
+
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+  }
+
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
+
+  button,
+  a,
+  label {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  ::selection {
+    color: #ffffff;
+    background: #1d4ed8;
+  }
+}
+
+@layer components {
+  .form-input {
+    width: 100%;
+    min-height: 3rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.75rem;
+    background: #ffffff;
+    padding: 0.6875rem 1rem;
+    color: #0f172a;
+    font-size: 1rem;
+    line-height: 1.5rem;
+    outline: none;
+    transition:
+      border-color 140ms ease,
+      box-shadow 140ms ease;
+  }
+
+  .form-input::placeholder {
+    color: #94a3b8;
+  }
+
+  .form-input:hover {
+    border-color: #94a3b8;
+  }
+
+  .form-input:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgb(37 99 235 / 14%);
+  }
+
+  .form-input[aria-invalid="true"] {
+    border-color: #dc2626;
+  }
+
+  .form-input[aria-invalid="true"]:focus {
+    box-shadow: 0 0 0 3px rgb(220 38 38 / 12%);
+  }
+
+  .form-input:disabled {
+    cursor: not-allowed;
+    background: #f8fafc;
+    color: #64748b;
+    opacity: 0.75;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
