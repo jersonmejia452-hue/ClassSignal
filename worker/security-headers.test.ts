@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { workerAssetsConfig } from '../build/worker-assets-config'
 import worker, {
   applySecurityHeaders,
   createContentSecurityPolicy,
@@ -152,5 +153,9 @@ describe('security headers', () => {
     expect(policy).toContain("connect-src 'self'")
     expect(policy).not.toContain('supabase.co')
     expect(policy).not.toContain('not-a-url')
+  })
+
+  it('runs the worker before static assets so production receives the headers', () => {
+    expect(workerAssetsConfig.run_worker_first).toBe(true)
   })
 })
