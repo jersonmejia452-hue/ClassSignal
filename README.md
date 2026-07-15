@@ -43,7 +43,7 @@ La IA no se ejecuta automáticamente: un profesor autenticado debe pulsar **Anal
 - Node.js `^20.19.0` o `>=22.12.0`
 - npm
 - una cuenta y un proyecto vacío de Supabase
-- una API key de OpenAI con acceso a `gpt-5.6` para habilitar el mapa
+- una API key de OpenAI con acceso a `gpt-5.6-sol` para habilitar el mapa
 - dos navegadores o perfiles independientes para probar el flujo completo
 
 ## 1. Instalar dependencias
@@ -290,7 +290,7 @@ Añade `OPENAI_API_KEY` en **Supabase > Edge Functions > Secrets**. No la añada
 
 ### OpenAI rechaza la credencial o aplica un límite temporal
 
-Verifica que la key esté activa, tenga acceso a `gpt-5.6` y que el proyecto de OpenAI tenga capacidad disponible. El historial registra el intento como fallido sin guardar detalles sensibles del proveedor; puedes volver a intentarlo desde el panel.
+Verifica que la key esté activa, tenga acceso a `gpt-5.6-sol` y que el proyecto de OpenAI tenga capacidad disponible. El historial registra el intento como fallido sin guardar detalles sensibles del proveedor; puedes volver a intentarlo desde el panel.
 
 ### El estudiante recibe “Ya enviaste una respuesta”
 
