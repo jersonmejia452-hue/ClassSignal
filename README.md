@@ -45,6 +45,7 @@ La IA no se ejecuta automáticamente: un profesor autenticado debe pulsar **Anal
 - Node.js `^20.19.0` o `>=22.12.0`
 - npm
 - una cuenta y un proyecto vacío de Supabase
+- un widget invisible de Cloudflare Turnstile para los envíos anónimos
 - una API key de OpenAI con acceso a `gpt-5.6-luna` para habilitar el mapa
 - dos navegadores o perfiles independientes para probar el flujo completo
 
@@ -135,12 +136,37 @@ VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_key_here
 VITE_PUBLIC_APP_URL=http://localhost:5173
 VITE_PROFESSOR_SIGNUP_ENABLED=false
 OPENAI_API_KEY=sk-your-openai-api-key
-RESPONSE_HMAC_SECRET=replace-with-at-least-32-random-bytes
+RESPONSE_HMAC_SECRET=replace-with-32-random-bytes
+TURNSTILE_SITE_KEY=replace-with-your-turnstile-site-key
+TURNSTILE_SECRET_KEY=replace-with-your-turnstile-secret-key
+TURNSTILE_EXPECTED_HOSTNAMES=localhost,127.0.0.1
 ```
 
 Las dos primeras variables son obligatorias para la aplicación. `VITE_PUBLIC_APP_URL` es opcional; define el origen que se incluirá en el enlace y el QR. Si se omite, la aplicación usa `window.location.origin`. El registro docente está oculto por defecto; actívalo solo durante onboarding y habilita también el registro en Supabase Auth.
 
-`OPENAI_API_KEY` y `RESPONSE_HMAC_SECRET` son variables exclusivas del servidor. No forman parte del bundle porque no tienen el prefijo `VITE_`. Para producción, añádelas en **Supabase > Edge Functions > Secrets**; genera el secreto HMAC con al menos 32 bytes aleatorios y no reutilices una contraseña. Nunca crees `VITE_OPENAI_API_KEY` ni `VITE_RESPONSE_HMAC_SECRET`.
+`OPENAI_API_KEY`, `RESPONSE_HMAC_SECRET` y las variables `TURNSTILE_*` son exclusivas del servidor. No forman parte del bundle porque no tienen el prefijo `VITE_`. Para producción, añádelas en **Supabase > Edge Functions > Secrets**; genera 32 bytes aleatorios, codifícalos como base64url (43 o más caracteres) y no reutilices una contraseña. Nunca crees variantes `VITE_` de claves privadas.
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+### Configurar Turnstile invisible
+
+1. En Cloudflare Turnstile crea un widget **Invisible** y autoriza el hostname exacto donde se publica ClassSignal.
+2. Guarda la site key como `TURNSTILE_SITE_KEY` y la clave privada como `TURNSTILE_SECRET_KEY` en los secretos de Edge Functions.
+3. Define obligatoriamente `TURNSTILE_EXPECTED_HOSTNAMES` con los hostnames permitidos, separados por comas y sin protocolo, puerto ni ruta.
+
+La Edge Function entrega por `GET` solamente la site key y la acción pública. Cada `POST` exige un token nuevo, lo valida con Siteverify y comprueba `action=submit_response`, `cData=sessionId` y el hostname exacto. Los tokens duran cinco minutos, son de un solo uso y cualquier error o indisponibilidad falla cerrado.
+
+Para desarrollo local y pruebas automatizadas usa las credenciales oficiales de prueba de Cloudflare, nunca un bypass en el código:
+
+```dotenv
+TURNSTILE_SITE_KEY=1x00000000000000000000BB
+TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+TURNSTILE_EXPECTED_HOSTNAMES=localhost,127.0.0.1
+```
+
+La site key `...BB` corresponde al widget invisible que siempre aprueba en pruebas. Nunca guardes estas credenciales de prueba en producción; una clave privada real rechaza sus tokens simulados.
 
 Obtén la URL y una **publishable key** desde la configuración de API del proyecto. Todas las variables con prefijo `VITE_` forman parte del bundle del navegador, por lo que:
 
@@ -170,7 +196,7 @@ Para desarrollo local, inicia Supabase y sirve la función con el mismo archivo 
 npx supabase functions serve --env-file .env.local
 ```
 
-`analyze-session` exige un JWT de profesor válido. `submit-response` no exige cuenta porque el estudiante es anónimo, pero valida el cuerpo, seudonimiza el identificador y llama una RPC disponible únicamente para `service_role`; nunca expone esa credencial. Si falta `OPENAI_API_KEY`, el resto del MVP sigue funcionando y el panel muestra un error de configuración sin exponer secretos.
+`analyze-session` exige un JWT de profesor válido. `submit-response` no exige cuenta porque el estudiante es anónimo, pero exige Turnstile, valida el cuerpo, seudonimiza el identificador y llama una RPC disponible únicamente para `service_role`; nunca expone credenciales privadas. Si falta Turnstile, su lista de hostnames o el secreto HMAC dedicado, el envío falla cerrado. Si falta `OPENAI_API_KEY`, el resto del MVP sigue funcionando y el panel muestra un error de configuración sin exponer secretos.
 
 ## 5. Ejecutar la aplicación
 
@@ -184,7 +210,7 @@ Comandos disponibles:
 
 ```bash
 npm run dev      # servidor de desarrollo
-npm test         # 14 pruebas unitarias
+npm test         # 19 pruebas unitarias
 npm run build    # comprobación TypeScript y build de producción
 npm run preview  # vista local del build generado
 ```
@@ -237,7 +263,7 @@ Usa navegadores distintos o perfiles separados para que sus sesiones y `localSto
 5. Mantén abierta la pantalla de detalle; debe mostrar código, QR, enlace y el indicador “En vivo”.
 6. Abre **modo proyector** en otra ventana y comprueba que muestre solo métricas agregadas.
 7. En el **navegador B**, abre `/unirse`, escribe el código o escanea el QR.
-8. Elige un estado, escribe una duda opcional y envíala.
+8. Elige un estado, escribe una duda opcional y envíala. Turnstile se ejecuta en segundo plano al pulsar el botón, sin un paso adicional en el flujo normal.
 9. Sin recargar el navegador A ni la proyección, comprueba que cambien el total y los porcentajes.
 10. En el navegador A, pulsa **Analizar sesión** y comprueba el mapa, los tokens, la duración y el costo estimado.
 11. Envía otra respuesta desde un perfil distinto: el mapa anterior se marca como desactualizado hasta que pulses **Actualizar mapa**.
@@ -269,6 +295,7 @@ El seed asigna la demo al usuario Auth más antiguo y es repetible: los identifi
 - Los estudiantes permanecen sin autenticar y usan el rol `anon` mediante un cliente separado.
 - `anon` no tiene lectura directa de las tablas. La RPC `get_public_session` devuelve solamente los campos mínimos para la pantalla pública.
 - `anon` no puede insertar directamente en `responses` ni ejecutar la RPC privilegiada. La Edge Function pública valida, limita y ejecuta una RPC exclusiva de `service_role`.
+- Cada envío exige un token Turnstile nuevo verificado en servidor; se comprueban la acción, la sesión ligada mediante `cData` y un hostname de la lista obligatoria.
 - El código corto sirve para encontrar una sesión; no es la frontera de autorización. Esa frontera está en los privilegios y políticas RLS de PostgreSQL.
 - La combinación `(session_id, anonymous_id)` es única; el servidor deriva ese UUID mediante HMAC por sesión, por lo que un profesor no puede correlacionar el mismo navegador entre clases.
 - Cada clase acepta como máximo 500 respuestas y cada huella de red diaria tiene un límite de 80 intentos por ventana de 15 minutos; los duplicados y rechazos también consumen la cuota. La huella es un HMAC de corta vida calculado con un secreto dedicado; nunca se almacena la IP.
@@ -278,7 +305,9 @@ El seed asigna la demo al usuario Auth más antiguo y es repetible: los identifi
 
 El identificador del estudiante es un UUID aleatorio guardado en `localStorage`. Antes de guardarlo en Postgres, el servidor genera otro UUID seudónimo específico para la sesión. No se solicita nombre, correo ni cuenta. Sigue siendo un mecanismo de baja fricción: borrar el almacenamiento o cambiar de navegador genera otro identificador, por eso existen además límites de red y capacidad total.
 
-El límite de red y la capacidad total son defensas de MVP, no prueban que cada envío corresponda a una persona. Antes de abrir ClassSignal a cursos masivos o códigos publicados fuera del aula, añade un desafío Turnstile/CAPTCHA verificado en la Edge Function o entrega tickets de participación firmados y de corta duración.
+Al validar Turnstile, la Edge Function envía a Cloudflare el token y, cuando está disponible, la dirección de red para la comprobación antiabuso. ClassSignal no guarda la IP en sus tablas: conserva únicamente una huella HMAC diaria no reversible para aplicar límites. En una publicación institucional, refleja este procesador también en el aviso de privacidad de la organización.
+
+Turnstile, el límite de red y la capacidad total reducen automatizaciones y abuso, pero no prueban que cada envío corresponda a una persona. Para cursos masivos o códigos publicados fuera del aula, considera además tickets de participación firmados y de corta duración.
 
 El costo mostrado es una estimación histórica calculada con la tarifa Luna capturada en la ejecución (`US$1/M` tokens de entrada, `US$0.10/M` en caché y `US$6/M` de salida, incluidos los multiplicadores documentados para contextos de más de 272K tokens). La factura oficial de OpenAI sigue siendo la fuente definitiva.
 
@@ -319,6 +348,10 @@ Es el comportamiento esperado para una segunda respuesta desde el mismo perfil y
 ### El estudiante recibe un error de política o la sesión aparece cerrada
 
 Comprueba en el panel docente que la sesión siga activa y que `submit-response` esté desplegada con `verify_jwt=false`. La función y la RPC rechazan sesiones finalizadas aunque alguien conserve una pestaña antigua abierta.
+
+### Aparece “Envío seguro no disponible”
+
+Comprueba que `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`, `TURNSTILE_EXPECTED_HOSTNAMES` y un `RESPONSE_HMAC_SECRET` base64url de al menos 43 caracteres existan en **Supabase > Edge Functions > Secrets**. Verifica también que el hostname actual esté autorizado en el widget. Los secretos están disponibles inmediatamente al guardarlos; despliega además la versión de `submit-response` que valida Turnstile.
 
 ### El QR abre `localhost` en el teléfono
 

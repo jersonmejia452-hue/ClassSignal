@@ -1,5 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 
+import {
+  parseExpectedHostnames,
+  TURNSTILE_ACTION,
+  verifyTurnstileToken,
+} from "./turnstile.ts";
+
 const MAX_BODY_BYTES = 5_000;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -20,7 +26,7 @@ function corsHeaders() {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers":
       "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Max-Age": "86400",
     "Cache-Control": "no-store",
     Vary: "Origin",
@@ -54,17 +60,72 @@ function getDatabaseError(error: unknown) {
 }
 
 function getNetworkAddress(request: Request) {
-  const directAddress = request.headers.get("cf-connecting-ip") ??
-    request.headers.get("x-real-ip");
-  if (directAddress) return directAddress.trim().slice(0, 200);
-
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) {
-    const addresses = forwarded.split(",");
-    return (addresses.at(-1) ?? forwarded).trim().slice(0, 200);
-  }
+  const clientIp = getClientIp(request);
+  if (clientIp) return clientIp;
 
   return `unknown:${(request.headers.get("user-agent") ?? "none").slice(0, 180)}`;
+}
+
+function isLikelyIpAddress(value: string) {
+  return value.length <= 64 && /^[0-9a-f:.]+$/i.test(value) &&
+    (value.includes(".") || value.includes(":"));
+}
+
+function getClientIp(request: Request) {
+  const directAddress = request.headers.get("cf-connecting-ip") ??
+    request.headers.get("x-real-ip");
+  const normalizedDirectAddress = directAddress?.trim();
+  if (
+    normalizedDirectAddress && isLikelyIpAddress(normalizedDirectAddress)
+  ) {
+    return normalizedDirectAddress;
+  }
+
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (!forwarded) return undefined;
+
+  return forwarded
+    .split(",")
+    .map((address) => address.trim())
+    .reverse()
+    .find(isLikelyIpAddress);
+}
+
+function getServerConfiguration() {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim();
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim();
+  const hmacSecret = Deno.env.get("RESPONSE_HMAC_SECRET")?.trim();
+  const turnstileSiteKey = Deno.env.get("TURNSTILE_SITE_KEY")?.trim();
+  const turnstileSecretKey = Deno.env.get("TURNSTILE_SECRET_KEY")?.trim();
+  const expectedHostnames = parseExpectedHostnames(
+    Deno.env.get("TURNSTILE_EXPECTED_HOSTNAMES"),
+  );
+
+  if (
+    !supabaseUrl ||
+    !serviceRoleKey ||
+    !hmacSecret || hmacSecret.length < 43 ||
+    !turnstileSiteKey || turnstileSiteKey.length < 20 ||
+    !turnstileSecretKey || turnstileSecretKey.length < 20 ||
+    expectedHostnames.length === 0
+  ) {
+    throw new PublicFunctionError(
+      503,
+      "submission_not_configured",
+      "El envío seguro de respuestas no está configurado temporalmente.",
+    );
+  }
+
+  return {
+    supabaseUrl,
+    serviceRoleKey,
+    hmacSecret,
+    turnstile: {
+      siteKey: turnstileSiteKey,
+      secretKey: turnstileSecretKey,
+      expectedHostnames,
+    },
+  };
 }
 
 async function createHmac(source: string, secret: string) {
@@ -137,11 +198,14 @@ function parseSubmission(value: unknown) {
   const anonymousId = value.anonymousId;
   const status = value.status;
   const questionText = value.questionText;
+  const turnstileToken = value.turnstileToken;
 
   if (
     typeof sessionId !== "string" || !UUID_PATTERN.test(sessionId) ||
     typeof anonymousId !== "string" || !UUID_PATTERN.test(anonymousId) ||
     typeof status !== "string" || !RESPONSE_STATUSES.has(status) ||
+    typeof turnstileToken !== "string" || turnstileToken.length === 0 ||
+    turnstileToken.length > 2048 ||
     (questionText !== undefined && questionText !== null &&
       typeof questionText !== "string")
   ) {
@@ -168,6 +232,7 @@ function parseSubmission(value: unknown) {
     anonymousId,
     status,
     questionText: normalizedQuestion || null,
+    turnstileToken,
   };
 }
 
@@ -225,12 +290,34 @@ Deno.serve(async (request) => {
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
 
+  if (request.method === "GET") {
+    try {
+      const configuration = getServerConfiguration();
+      return jsonResponse({
+        turnstile: {
+          siteKey: configuration.turnstile.siteKey,
+          action: TURNSTILE_ACTION,
+        },
+      });
+    } catch (error) {
+      return errorResponse(
+        error instanceof PublicFunctionError
+          ? error
+          : new PublicFunctionError(
+            503,
+            "submission_not_configured",
+            "El envío seguro de respuestas no está configurado temporalmente.",
+          ),
+      );
+    }
+  }
+
   if (request.method !== "POST") {
     return errorResponse(
       new PublicFunctionError(
         405,
         "method_not_allowed",
-        "Usa una solicitud POST para enviar una respuesta.",
+        "Usa una solicitud GET o POST válida.",
       ),
     );
   }
@@ -266,30 +353,47 @@ Deno.serve(async (request) => {
     }
 
     const submission = parseSubmission(body);
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim();
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim();
-    if (!supabaseUrl || !serviceRoleKey) {
+    const configuration = getServerConfiguration();
+    const verification = await verifyTurnstileToken({
+      token: submission.turnstileToken,
+      secretKey: configuration.turnstile.secretKey,
+      expectedCData: submission.sessionId,
+      remoteIp: getClientIp(request),
+      expectedHostnames: configuration.turnstile.expectedHostnames,
+    });
+
+    if (!verification.valid) {
+      console.warn("Turnstile verification rejected", {
+        reason: verification.reason,
+        errorCodes: verification.errorCodes,
+      });
       throw new PublicFunctionError(
-        503,
-        "submission_not_configured",
-        "El envío de respuestas no está configurado temporalmente.",
+        verification.reason === "unavailable" ? 503 : 403,
+        verification.reason === "unavailable"
+          ? "verification_unavailable"
+          : "verification_failed",
+        verification.reason === "unavailable"
+          ? "La verificación de seguridad no está disponible. Intenta nuevamente."
+          : "No pudimos verificar el envío. Intenta nuevamente.",
       );
     }
 
-    const hmacSecret = Deno.env.get("RESPONSE_HMAC_SECRET")?.trim() ||
-      serviceRoleKey;
     const networkFingerprint = await createDailyNetworkFingerprint(
       request,
-      hmacSecret,
+      configuration.hmacSecret,
     );
     const serverAnonymousId = await createSessionAnonymousId(
       submission.sessionId,
       submission.anonymousId,
-      hmacSecret,
+      configuration.hmacSecret,
     );
-    const supabase = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
+    const supabase = createClient(
+      configuration.supabaseUrl,
+      configuration.serviceRoleKey,
+      {
+        auth: { persistSession: false, autoRefreshToken: false },
+      },
+    );
 
     const { data, error } = await supabase.rpc("submit_student_response_server_v2", {
       p_session_id: submission.sessionId,

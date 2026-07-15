@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { responseSchema } from './response'
+import {
+  responseSchema,
+  responseSubmissionSecuritySchema,
+} from './response'
 
 describe('responseSchema', () => {
   it('acepta una señal sin pregunta y recorta el texto opcional', () => {
@@ -18,6 +21,30 @@ describe('responseSchema', () => {
     expect(responseSchema.safeParse({
       status: 'lost',
       questionText: 'a'.repeat(1001),
+    }).success).toBe(false)
+  })
+})
+
+describe('responseSubmissionSecuritySchema', () => {
+  it('acepta solo la configuración pública mínima de Turnstile', () => {
+    expect(responseSubmissionSecuritySchema.parse({
+      turnstile: {
+        siteKey: '1x00000000000000000000BB',
+        action: 'submit_response',
+      },
+    })).toEqual({
+      turnstile: {
+        siteKey: '1x00000000000000000000BB',
+        action: 'submit_response',
+      },
+    })
+
+    expect(responseSubmissionSecuritySchema.safeParse({
+      turnstile: {
+        siteKey: 'short',
+        action: 'login',
+        secretKey: 'must-not-be-returned',
+      },
     }).success).toBe(false)
   })
 })

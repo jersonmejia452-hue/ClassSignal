@@ -2,9 +2,14 @@ import type { RealtimeChannel } from '@supabase/supabase-js'
 
 import {
   responseSubmissionErrorSchema,
+  responseSubmissionSecuritySchema,
   responseSubmissionSchema,
 } from '../schemas/response'
-import type { ResponseDraft, StudentResponse } from '../types/domain'
+import type {
+  ResponseDraft,
+  ResponseSubmissionSecurity,
+  StudentResponse,
+} from '../types/domain'
 import { getPublicSupabase, getTeacherSupabase } from './supabase'
 
 export class ResponseSubmissionError extends Error {
@@ -28,7 +33,63 @@ export async function getSessionResponses(sessionId: string) {
   return (data ?? []) as StudentResponse[]
 }
 
-export async function submitStudentResponse(values: ResponseDraft) {
+async function parsePublicFunctionError(
+  error: unknown,
+  fallbackMessage: string,
+  fallbackCode: string,
+) {
+  if (
+    typeof error === 'object'
+    && error !== null
+    && 'context' in error
+    && error.context instanceof Response
+  ) {
+    try {
+      const payload: unknown = await error.context.clone().json()
+      const parsedError = responseSubmissionErrorSchema.safeParse(payload)
+      if (parsedError.success) {
+        return new ResponseSubmissionError(
+          parsedError.data.error.message,
+          parsedError.data.error.code,
+        )
+      }
+    } catch {
+      // La respuesta puede no contener JSON; devolvemos un error público estable.
+    }
+  }
+
+  return new ResponseSubmissionError(fallbackMessage, fallbackCode)
+}
+
+export async function getResponseSubmissionSecurity(): Promise<ResponseSubmissionSecurity> {
+  const { data, error } = await getPublicSupabase().functions.invoke(
+    'submit-response',
+    { method: 'GET' },
+  )
+
+  if (error) {
+    throw await parsePublicFunctionError(
+      error,
+      'El envío seguro no está disponible temporalmente.',
+      'security_configuration_failed',
+    )
+  }
+
+  const parsed = responseSubmissionSecuritySchema.safeParse(data)
+  if (!parsed.success) {
+    throw new ResponseSubmissionError(
+      'El servidor devolvió una configuración de seguridad inesperada.',
+      'invalid_security_configuration',
+    )
+  }
+
+  return parsed.data
+}
+
+export async function submitStudentResponse(
+  values: ResponseDraft,
+  turnstileToken: string,
+) {
   const { data, error } = await getPublicSupabase().functions.invoke(
     'submit-response',
     { body: {
@@ -36,31 +97,13 @@ export async function submitStudentResponse(values: ResponseDraft) {
       anonymousId: values.anonymousId,
       status: values.status,
       questionText: values.questionText?.trim() || null,
+      turnstileToken,
     } },
   )
 
   if (error) {
-    if (
-      typeof error === 'object'
-      && error !== null
-      && 'context' in error
-      && error.context instanceof Response
-    ) {
-      try {
-        const payload: unknown = await error.context.clone().json()
-        const parsedError = responseSubmissionErrorSchema.safeParse(payload)
-        if (parsedError.success) {
-          throw new ResponseSubmissionError(
-            parsedError.data.error.message,
-            parsedError.data.error.code,
-          )
-        }
-      } catch (parseError) {
-        if (parseError instanceof ResponseSubmissionError) throw parseError
-      }
-    }
-
-    throw new ResponseSubmissionError(
+    throw await parsePublicFunctionError(
+      error,
       'No pudimos enviar tu respuesta. Intenta nuevamente.',
       'submission_failed',
     )

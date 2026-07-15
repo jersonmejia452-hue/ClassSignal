@@ -64,6 +64,13 @@ export interface ResponseDraft {
   questionText?: string
 }
 
+export interface ResponseSubmissionSecurity {
+  turnstile: {
+    siteKey: string
+    action: 'submit_response'
+  }
+}
+
 export interface StatusSummaryItem {
   status: UnderstandingStatus
   count: number

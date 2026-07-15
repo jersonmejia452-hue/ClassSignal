@@ -1,8 +1,12 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ArrowRight, CheckCircle2, Clock3, LockKeyhole, MessageSquareText } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 
 import { StatusSelector } from '../../components/responses/StatusSelector'
+import {
+  InvisibleTurnstile,
+  type InvisibleTurnstileHandle,
+} from '../../components/security/InvisibleTurnstile'
 import { Alert } from '../../components/ui/Alert'
 import { Brand } from '../../components/ui/Brand'
 import { Button } from '../../components/ui/Button'
@@ -10,12 +14,17 @@ import { useAnonymousId } from '../../hooks/useAnonymousId'
 import { getErrorCode, getErrorMessage } from '../../lib/errors'
 import { statusContent } from '../../lib/format'
 import { responseSchema } from '../../schemas/response'
-import { submitStudentResponse } from '../../services/responses.service'
+import {
+  getResponseSubmissionSecurity,
+  submitStudentResponse,
+} from '../../services/responses.service'
 import { getPublicSession } from '../../services/sessions.service'
 import type {
   PublicClassSession,
+  ResponseSubmissionSecurity,
   UnderstandingStatus,
 } from '../../types/domain'
+import type { TurnstileStatus } from '../../types/turnstile'
 
 interface FormErrors {
   status?: string
@@ -25,9 +34,14 @@ interface FormErrors {
 export function StudentSessionPage() {
   const { code = '' } = useParams<{ code: string }>()
   const anonymousId = useAnonymousId()
+  const turnstileRef = useRef<InvisibleTurnstileHandle>(null)
   const [session, setSession] = useState<PublicClassSession | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [submissionSecurity, setSubmissionSecurity] = useState<ResponseSubmissionSecurity | null>(null)
+  const [isSecurityLoading, setIsSecurityLoading] = useState(true)
+  const [securityError, setSecurityError] = useState<string | null>(null)
+  const [turnstileStatus, setTurnstileStatus] = useState<TurnstileStatus>('loading')
   const [status, setStatus] = useState<UnderstandingStatus | null>(null)
   const [questionText, setQuestionText] = useState('')
   const [submittedStatus, setSubmittedStatus] = useState<UnderstandingStatus | null>(null)
@@ -49,10 +63,15 @@ export function StudentSessionPage() {
       setIsSubmitted(false)
       setIsLoading(true)
       setLoadError(null)
+      setSubmissionSecurity(null)
+      setIsSecurityLoading(true)
+      setSecurityError(null)
+      setTurnstileStatus('loading')
 
+      let publicSession: PublicClassSession | null = null
       try {
-        const result = await getPublicSession(code)
-        if (isMounted) setSession(result)
+        publicSession = await getPublicSession(code)
+        if (isMounted) setSession(publicSession)
       } catch (error) {
         if (isMounted) {
           setLoadError(
@@ -61,6 +80,28 @@ export function StudentSessionPage() {
         }
       } finally {
         if (isMounted) setIsLoading(false)
+      }
+
+      if (!publicSession?.is_active) {
+        if (isMounted) setIsSecurityLoading(false)
+        return
+      }
+
+      try {
+        const security = await getResponseSubmissionSecurity()
+        if (isMounted) setSubmissionSecurity(security)
+      } catch (error) {
+        if (isMounted) {
+          setTurnstileStatus('error')
+          setSecurityError(
+            getErrorMessage(
+              error,
+              'El envío seguro no está disponible temporalmente.',
+            ),
+          )
+        }
+      } finally {
+        if (isMounted) setIsSecurityLoading(false)
       }
     }
 
@@ -90,16 +131,27 @@ export function StudentSessionPage() {
     }
 
     if (!session) return
+    if (
+      !submissionSecurity
+      || !turnstileRef.current
+      || turnstileStatus !== 'ready'
+    ) {
+      setSubmitError(
+        'La verificación segura aún no está lista. Espera un momento e intenta nuevamente.',
+      )
+      return
+    }
     setErrors({})
     setIsSubmitting(true)
 
     try {
+      const turnstileToken = await turnstileRef.current.execute()
       await submitStudentResponse({
         sessionId: session.id,
         anonymousId,
         status: result.data.status,
         questionText: result.data.questionText,
-      })
+      }, turnstileToken)
       setSubmittedStatus(result.data.status)
       setIsSubmitted(true)
     } catch (error) {
@@ -114,12 +166,20 @@ export function StudentSessionPage() {
         setSubmitError('Se recibieron demasiados envíos desde esta red. Espera unos minutos.')
       } else if (errorCode === 'session_response_limit') {
         setSubmitError('La clase alcanzó su capacidad máxima de respuestas.')
+      } else if (errorCode === 'verification_failed') {
+        setSubmitError('No pudimos verificar el envío. Intenta nuevamente.')
+      } else if (
+        errorCode === 'verification_unavailable'
+        || errorCode === 'submission_not_configured'
+      ) {
+        setSubmitError('El envío seguro no está disponible temporalmente. Intenta en unos minutos.')
       } else {
         setSubmitError(
           getErrorMessage(error, 'No pudimos enviar tu respuesta. Intenta otra vez.'),
         )
       }
     } finally {
+      turnstileRef.current?.reset()
       setIsSubmitting(false)
     }
   }
@@ -240,13 +300,54 @@ export function StudentSessionPage() {
 
             {submitError && <Alert className="mt-6" tone="error">{submitError}</Alert>}
 
+            {submissionSecurity && (
+              <InvisibleTurnstile
+                action={submissionSecurity.turnstile.action}
+                cData={session.id}
+                onStatusChange={setTurnstileStatus}
+                ref={turnstileRef}
+                siteKey={submissionSecurity.turnstile.siteKey}
+              />
+            )}
+
+            {(securityError || turnstileStatus === 'error') && (
+              <Alert className="mt-6" tone="error" title="Envío seguro no disponible">
+                {securityError || 'No pudimos cargar la verificación antiabuso. Revisa tu conexión y recarga la página.'}
+              </Alert>
+            )}
+
+            <p className="sr-only" role="status" aria-live="polite">
+              {isSecurityLoading || turnstileStatus === 'loading'
+                ? 'Preparando verificación segura.'
+                : turnstileStatus === 'running'
+                  ? 'Verificando el envío.'
+                  : turnstileStatus === 'ready'
+                    ? 'Verificación segura lista.'
+                    : 'La verificación segura no está disponible.'}
+            </p>
+
             <div className="sticky bottom-3 z-20 mt-7 rounded-2xl border border-slate-200/80 bg-white/95 p-2 shadow-[0_14px_35px_rgba(7,26,43,0.16)] backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
-              <Button fullWidth isLoading={isSubmitting} type="submit">
-                Enviar de forma anónima
+              <Button
+                disabled={
+                  isSecurityLoading
+                  || !submissionSecurity
+                  || turnstileStatus === 'loading'
+                  || turnstileStatus === 'error'
+                }
+                fullWidth
+                isLoading={isSubmitting}
+                type="submit"
+              >
+                {isSecurityLoading || turnstileStatus === 'loading'
+                  ? 'Preparando envío seguro…'
+                  : isSubmitting
+                    ? 'Verificando y enviando…'
+                    : 'Enviar de forma anónima'}
                 {!isSubmitting && <ArrowRight className="size-4" aria-hidden="true" />}
               </Button>
               <p className="mt-2 text-center text-xs leading-5 text-slate-400 sm:mt-3">
-                Una respuesta por dispositivo en esta clase.
+                Una respuesta por dispositivo. Turnstile procesa señales técnicas para evitar abuso;
+                ClassSignal no guarda tu IP en la base de datos.
               </p>
             </div>
           </form>
