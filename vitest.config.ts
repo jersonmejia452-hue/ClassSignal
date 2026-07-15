@@ -6,6 +6,7 @@ export default defineConfig({
     include: [
       'src/**/*.test.ts',
       'supabase/functions/**/*.test.ts',
+      'worker/**/*.test.ts',
     ],
   },
 })
