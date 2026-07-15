@@ -103,7 +103,7 @@ export const InvisibleTurnstile = forwardRef<
           execution: 'execute',
           language: 'es',
           retry: 'never',
-          'refresh-expired': 'manual',
+          'refresh-expired': 'never',
           'response-field': false,
           callback: (token) => {
             if (!isMounted) return

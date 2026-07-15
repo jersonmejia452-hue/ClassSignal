@@ -7,7 +7,7 @@ export interface TurnstileRenderOptions {
   execution: 'execute'
   language: 'es'
   retry: 'never'
-  'refresh-expired': 'manual'
+  'refresh-expired': 'never'
   'response-field': false
   callback: (token: string) => void
   'error-callback': (errorCode: string) => boolean

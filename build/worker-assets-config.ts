@@ -1,5 +1,6 @@
 export const workerAssetsConfig = {
   binding: 'ASSETS',
-  not_found_handling: 'single-page-application',
+  html_handling: 'none',
+  not_found_handling: 'none',
   run_worker_first: true,
 } as const

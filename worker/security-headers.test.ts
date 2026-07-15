@@ -1,15 +1,13 @@
-import { readFileSync } from 'node:fs'
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { workerAssetsConfig } from '../build/worker-assets-config'
+import { appShellPath } from '../build/app-shell'
 import worker, {
   applySecurityHeaders,
   createContentSecurityPolicy,
 } from './index'
 
 const supabaseUrl = 'https://project-ref.supabase.co'
-const productionSupabaseUrl = 'https://jkqedwixmuvtrqmzhqtc.supabase.co'
 
 const expectedHeaders = {
   'content-security-policy': [
@@ -100,9 +98,9 @@ describe('security headers', () => {
         async fetch(request: Request) {
           requestedUrls.push(request.url)
 
-          if (new URL(request.url).pathname === '/') {
+          if (new URL(request.url).pathname === appShellPath) {
             return new Response('<main>ClassSignal</main>', {
-              headers: { 'content-type': 'text/html' },
+              headers: { 'content-type': 'text/plain' },
             })
           }
 
@@ -120,11 +118,14 @@ describe('security headers', () => {
 
     expect(requestedUrls).toEqual([
       'https://classsignal.example/profesor',
-      'https://classsignal.example/',
+      `https://classsignal.example${appShellPath}`,
     ])
     expectSecurityHeaders(response)
     expect(response.headers.get('strict-transport-security')).toBe(
       'max-age=31536000',
+    )
+    expect(response.headers.get('content-type')).toBe(
+      'text/html; charset=utf-8',
     )
     await expect(response.text()).resolves.toContain('ClassSignal')
   })
@@ -150,6 +151,40 @@ describe('security headers', () => {
     await expect(response.text()).resolves.toBe('missing')
   })
 
+  it('uses the Vite index shell during local development', async () => {
+    const requestedPaths: string[] = []
+    const env = {
+      ASSETS: {
+        async fetch(request: Request) {
+          const path = new URL(request.url).pathname
+          requestedPaths.push(path)
+
+          if (path === '/index.html') {
+            return new Response('<main>Local ClassSignal</main>', {
+              headers: { 'content-type': 'text/html' },
+            })
+          }
+
+          return new Response('not found', { status: 404 })
+        },
+      },
+    }
+
+    const response = await worker.fetch(
+      new Request('http://localhost:5173/', {
+        headers: { accept: 'text/html' },
+      }),
+      env,
+    )
+
+    expect(requestedPaths).toEqual(['/', appShellPath, '/index.html'])
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe(
+      'text/html; charset=utf-8',
+    )
+    await expect(response.text()).resolves.toContain('Local ClassSignal')
+  })
+
   it('fails closed when the configured Supabase URL is invalid', () => {
     const policy = createContentSecurityPolicy('not-a-url')
 
@@ -158,22 +193,9 @@ describe('security headers', () => {
     expect(policy).not.toContain('not-a-url')
   })
 
-  it('runs the worker before static assets so production receives the headers', () => {
+  it('requests worker-first routing from compatible Cloudflare hosts', () => {
     expect(workerAssetsConfig.run_worker_first).toBe(true)
-  })
-
-  it('generates matching headers for asset-first hosting responses', () => {
-    const staticHeaders = readFileSync(
-      new URL('../public/_headers', import.meta.url),
-      'utf8',
-    )
-    const policy = createContentSecurityPolicy(productionSupabaseUrl)
-
-    expect(staticHeaders).toContain(`Content-Security-Policy: ${policy}`)
-    expect(staticHeaders).toContain(
-      'Strict-Transport-Security: max-age=31536000',
-    )
-    expect(staticHeaders).toContain('X-Content-Type-Options: nosniff')
-    expect(staticHeaders).not.toContain('*.supabase.co')
+    expect(workerAssetsConfig.html_handling).toBe('none')
+    expect(workerAssetsConfig.not_found_handling).toBe('none')
   })
 })

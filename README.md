@@ -145,8 +145,13 @@ TURNSTILE_EXPECTED_HOSTNAMES=localhost,127.0.0.1
 Las dos primeras variables son obligatorias para la aplicación. `VITE_PUBLIC_APP_URL` es opcional; define el origen que se incluirá en el enlace y el QR. Si se omite, la aplicación usa `window.location.origin`. El registro docente está oculto por defecto; actívalo solo durante onboarding y habilita también el registro en Supabase Auth.
 
 Si despliegas tu propia instancia, reemplaza también los dos orígenes de
-Supabase en `public/_headers`; deben coincidir exactamente con
+Supabase en la política CSP del worker; deben coincidir exactamente con
 `VITE_SUPABASE_URL` para mantener la CSP cerrada.
+
+El build renombra el shell de Vite a `__classsignal-shell.txt` y el worker lo
+sirve como HTML. Esto evita que una capa de assets entregue la portada antes
+de aplicar CSP, HSTS y las demás cabeceras. El archivo no debe volver a
+publicarse como `index.html` sin comprobar esas cabeceras en producción.
 
 `OPENAI_API_KEY`, `RESPONSE_HMAC_SECRET` y las variables `TURNSTILE_*` son exclusivas del servidor. No forman parte del bundle porque no tienen el prefijo `VITE_`. Para producción, añádelas en **Supabase > Edge Functions > Secrets**; genera 32 bytes aleatorios, codifícalos como base64url (43 o más caracteres) y no reutilices una contraseña. Nunca crees variantes `VITE_` de claves privadas.
 

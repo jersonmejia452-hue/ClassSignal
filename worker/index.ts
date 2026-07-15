@@ -1,3 +1,4 @@
+import { appShellPath } from '../build/app-shell'
 import { createSecurityHeaders } from '../build/security-headers'
 
 export { createContentSecurityPolicy } from '../build/security-headers'
@@ -33,18 +34,40 @@ export function applySecurityHeaders(
   })
 }
 
+function asHtml(response: Response) {
+  const headers = new Headers(response.headers)
+  headers.set('Content-Type', 'text/html; charset=utf-8')
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  })
+}
+
 export default {
   async fetch(request: Request, env: Env) {
     const response = await env.ASSETS.fetch(request)
     const acceptsHtml = request.headers.get('accept')?.includes('text/html')
 
-    if (response.status !== 404 || request.method !== 'GET' || !acceptsHtml) {
+    if (
+      response.status !== 404 ||
+      !['GET', 'HEAD'].includes(request.method) ||
+      !acceptsHtml
+    ) {
       return applySecurityHeaders(request, response)
     }
 
-    const indexUrl = new URL('/', request.url)
-    const indexResponse = await env.ASSETS.fetch(new Request(indexUrl, request))
+    const shellUrl = new URL(appShellPath, request.url)
+    let shellResponse = await env.ASSETS.fetch(new Request(shellUrl, request))
 
-    return applySecurityHeaders(request, indexResponse)
+    if (shellResponse.status === 404) {
+      const developmentShellUrl = new URL('/index.html', request.url)
+      shellResponse = await env.ASSETS.fetch(
+        new Request(developmentShellUrl, request),
+      )
+    }
+
+    return applySecurityHeaders(request, asHtml(shellResponse))
   },
 }
