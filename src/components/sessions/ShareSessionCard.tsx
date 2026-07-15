@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, Copy, QrCode, Share2 } from 'lucide-react'
+import { Check, Copy, MonitorUp, QrCode, Share2 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
+import { Link } from 'react-router-dom'
 
 import { getPublicAppOrigin } from '../../lib/env'
 import type { ClassSession } from '../../types/domain'
@@ -53,11 +54,21 @@ export function ShareSessionCard({ session }: { session: ClassSession }) {
 
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-100 px-5 py-4 sm:px-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
         <p className="flex items-center gap-2 text-sm font-extrabold text-slate-950">
           <QrCode className="size-4 text-blue-700" aria-hidden="true" />
           Acceso para estudiantes
         </p>
+        <Link
+          className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-extrabold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          rel="noreferrer"
+          target="_blank"
+          to={`/profesor/sesion/${session.id}/presentar`}
+        >
+          <MonitorUp className="size-4" aria-hidden="true" />
+          Abrir modo proyector
+          <span className="sr-only"> (se abre en una pestaña nueva)</span>
+        </Link>
       </div>
 
       <div className="grid gap-6 p-5 sm:grid-cols-[minmax(0,1fr)_10rem] sm:items-center sm:p-6">

@@ -8,22 +8,24 @@ El modelo de navegación es **curso → clase (sesión) → señales**. Un curso
 
 Esta rebanada vertical incluye:
 
-- registro e inicio de sesión por correo para profesores con Supabase Auth;
+- inicio de sesión por correo para profesores con Supabase Auth y registro público configurable;
 - creación de cursos con nombre, materia y descripción opcional;
 - vista de cada curso con sus clases y acceso directo para iniciar una nueva;
 - creación, cierre y reactivación de sesiones;
 - código público de seis caracteres y enlace/QR para estudiantes;
-- acceso estudiantil sin cuenta desde `/s/:codigo`;
+- acceso estudiantil sin cuenta desde `/unirse` o `/s/:codigo`;
 - estados `Entendí`, `Tengo una duda` y `Estoy perdido`;
 - duda escrita opcional de hasta 1.000 caracteres;
 - identificador anónimo persistente en `localStorage`;
 - una respuesta por identificador y sesión;
 - feed de respuestas y resumen porcentual en tiempo real;
+- modo proyector con QR, código y pulso agregado, sin mostrar dudas individuales;
 - mapa de confusión bajo demanda con GPT‑5.6 y Structured Outputs;
-- historial de análisis, caché por versión de respuestas y recomendaciones docentes;
+- historial de análisis, caché, tokens, duración, costo estimado y recomendaciones docentes;
 - validación en cliente con Zod y restricciones equivalentes en PostgreSQL;
 - migración con índices, privilegios explícitos y políticas RLS;
-- datos de demostración opcionales.
+- datos de demostración opcionales;
+- pruebas unitarias para códigos, respuestas, porcentajes y cálculo de costo.
 
 La IA no se ejecuta automáticamente: un profesor autenticado debe pulsar **Analizar sesión**. La Edge Function excluye correos, UUID de respuestas e identificadores anónimos, y envía a OpenAI únicamente el contexto académico, el estado de comprensión y el texto opcional de las dudas. La solicitud usa `store: false`.
 
@@ -59,7 +61,7 @@ El repositorio incluye `package-lock.json`; `npm ci` conserva exactamente las ve
 1. Crea un proyecto desde el [Dashboard de Supabase](https://supabase.com/dashboard).
 2. Espera a que la base de datos termine de aprovisionarse.
 3. Abre **SQL Editor** y crea una consulta nueva.
-4. Copia todo el contenido de [`supabase/migrations/20260714052159_initial_mvp_schema.sql`](supabase/migrations/20260714052159_initial_mvp_schema.sql) y ejecútalo una sola vez.
+4. Ejecuta todos los archivos de `supabase/migrations` en orden cronológico. Con Supabase CLI puedes usar `npx supabase db push`.
 
 Las migraciones crean:
 
@@ -70,7 +72,9 @@ Las migraciones crean:
 - políticas RLS y privilegios separados para `authenticated` y `anon`;
 - la RPC pública y limitada `get_public_session`;
 - la publicación de `public.responses` en `supabase_realtime`;
-- `public.session_analyses`, con historial inmutable, caché de snapshots y lectura limitada al profesor propietario.
+- `public.session_analyses`, con historial inmutable, caché de snapshots y lectura limitada al profesor propietario;
+- telemetría de tokens/costo y cuotas atómicas de análisis;
+- una RPC exclusiva de `service_role` para aceptar respuestas desde la Edge Function sin conceder `INSERT` al navegador anónimo.
 
 Ejecuta los archivos de `supabase/migrations` en orden. No vuelvas a ejecutar la migración inicial completa sobre el mismo esquema: administra cambios posteriores con nuevas migraciones.
 
@@ -94,6 +98,8 @@ El cliente docente escucha únicamente eventos `INSERT` de la sesión abierta y 
 ## 3. Configurar autenticación por correo
 
 En **Authentication > Providers**, conserva habilitado el proveedor Email.
+
+En producción, desactiva **Allow new users to sign up** salvo durante un onboarding controlado. La interfaz oculta “Crear cuenta” cuando `VITE_PROFESSOR_SIGNUP_ENABLED=false`, pero la configuración de Supabase Auth es la frontera real. También conviene habilitar confirmación de correo, protección de contraseñas filtradas y CAPTCHA/Turnstile para cualquier periodo de registro.
 
 Para un flujo realista se recomienda mantener activa la confirmación de correo:
 
@@ -127,12 +133,14 @@ Completa `.env.local`:
 VITE_SUPABASE_URL=https://your-project-ref.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_key_here
 VITE_PUBLIC_APP_URL=http://localhost:5173
+VITE_PROFESSOR_SIGNUP_ENABLED=false
 OPENAI_API_KEY=sk-your-openai-api-key
+RESPONSE_HMAC_SECRET=replace-with-at-least-32-random-bytes
 ```
 
-Las dos primeras variables son obligatorias para la aplicación. `VITE_PUBLIC_APP_URL` es opcional; define el origen que se incluirá en el enlace y el QR. Si se omite, la aplicación usa `window.location.origin`.
+Las dos primeras variables son obligatorias para la aplicación. `VITE_PUBLIC_APP_URL` es opcional; define el origen que se incluirá en el enlace y el QR. Si se omite, la aplicación usa `window.location.origin`. El registro docente está oculto por defecto; actívalo solo durante onboarding y habilita también el registro en Supabase Auth.
 
-`OPENAI_API_KEY` es una variable exclusiva del servidor. No forma parte del bundle porque no tiene el prefijo `VITE_`. Para producción, añádela en **Supabase > Edge Functions > Secrets**. Nunca crees `VITE_OPENAI_API_KEY`.
+`OPENAI_API_KEY` y `RESPONSE_HMAC_SECRET` son variables exclusivas del servidor. No forman parte del bundle porque no tienen el prefijo `VITE_`. Para producción, añádelas en **Supabase > Edge Functions > Secrets**; genera el secreto HMAC con al menos 32 bytes aleatorios y no reutilices una contraseña. Nunca crees `VITE_OPENAI_API_KEY` ni `VITE_RESPONSE_HMAC_SECRET`.
 
 Obtén la URL y una **publishable key** desde la configuración de API del proyecto. Todas las variables con prefijo `VITE_` forman parte del bundle del navegador, por lo que:
 
@@ -145,21 +153,24 @@ La clave publicable identifica el proyecto, pero no reemplaza la autorización: 
 
 Reinicia el servidor de Vite después de cambiar variables de entorno.
 
-### Desplegar la Edge Function
+### Desplegar las Edge Functions
 
-Después de aplicar las migraciones, despliega la función autenticada:
+Después de aplicar las migraciones, despliega la función pública de respuestas y la función autenticada de análisis:
 
 ```bash
+npx supabase functions deploy submit-response --no-verify-jwt
 npx supabase functions deploy analyze-session
 ```
+
+Si actualizas una versión antigua que todavía insertaba respuestas directamente desde el navegador, coordina migración, Edge Function y frontend en la misma ventana de despliegue: la migración retira deliberadamente ese permiso legado. En una instalación nueva no existe esa transición.
 
 Para desarrollo local, inicia Supabase y sirve la función con el mismo archivo privado de entorno:
 
 ```bash
-npx supabase functions serve analyze-session --env-file .env.local
+npx supabase functions serve --env-file .env.local
 ```
 
-La función exige un JWT de profesor válido. Si falta `OPENAI_API_KEY`, el resto del MVP sigue funcionando y el panel muestra un error de configuración sin exponer secretos.
+`analyze-session` exige un JWT de profesor válido. `submit-response` no exige cuenta porque el estudiante es anónimo, pero valida el cuerpo, seudonimiza el identificador y llama una RPC disponible únicamente para `service_role`; nunca expone esa credencial. Si falta `OPENAI_API_KEY`, el resto del MVP sigue funcionando y el panel muestra un error de configuración sin exponer secretos.
 
 ## 5. Ejecutar la aplicación
 
@@ -173,6 +184,7 @@ Comandos disponibles:
 
 ```bash
 npm run dev      # servidor de desarrollo
+npm test         # 14 pruebas unitarias
 npm run build    # comprobación TypeScript y build de producción
 npm run preview  # vista local del build generado
 ```
@@ -181,14 +193,16 @@ npm run preview  # vista local del build generado
 
 | Ruta | Acceso | Función |
 | --- | --- | --- |
-| `/` | Público | Redirige al panel del profesor |
-| `/profesor/login` | Público | Registro e inicio de sesión por correo |
+| `/` | Público | Redirige al acceso estudiantil |
+| `/unirse` | Público, sin cuenta | Entrada mediante código de seis caracteres |
+| `/profesor/login` | Público | Inicio de sesión y registro opcional por correo |
 | `/profesor` | Profesor autenticado | Inicio y lista de cursos propios |
 | `/profesor/cursos/nuevo` | Profesor autenticado | Creación de un curso |
 | `/profesor/curso/:courseId` | Profesor propietario | Detalle del curso y sus clases |
 | `/profesor/curso/:courseId/sesion/nueva` | Profesor propietario | Creación de una clase dentro del curso |
 | `/profesor/sesiones/nueva` | Profesor autenticado | Ruta compatible para crear una sesión sin curso |
 | `/profesor/sesion/:id` | Profesor propietario | QR, código, estado, resumen y respuestas en vivo |
+| `/profesor/sesion/:id/presentar` | Profesor propietario | QR, código y pulso agregado para proyectar |
 | `/s/:codigo` | Público, sin cuenta | Respuesta anónima del estudiante |
 
 ## Estructura del proyecto
@@ -207,7 +221,7 @@ src/
 └── types/        # tipos del dominio
 supabase/
 ├── config.toml   # configuración local de Supabase CLI
-├── functions/    # Edge Function autenticada para generar el mapa
+├── functions/    # envío público protegido y análisis autenticado
 ├── migrations/  # esquema, RLS, privilegios, RPC y Realtime
 └── seed.sql      # demo opcional
 ```
@@ -216,18 +230,19 @@ supabase/
 
 Usa navegadores distintos o perfiles separados para que sus sesiones y `localStorage` no se mezclen.
 
-1. En el **navegador A**, abre `/profesor/login` y crea una cuenta docente.
+1. En el **navegador A**, abre `/profesor/login` e inicia sesión con una cuenta docente autorizada. Para probar registro, habilítalo temporalmente en Supabase Auth y en la variable de entorno.
 2. Si la confirmación de correo está activa, confirma la cuenta y vuelve a iniciar sesión.
 3. Crea un curso y entra a su detalle.
 4. Crea una clase dentro del curso con título y tema.
 5. Mantén abierta la pantalla de detalle; debe mostrar código, QR, enlace y el indicador “En vivo”.
-6. En el **navegador B**, abre el enlace `/s/:codigo` o escanea el QR.
-7. Elige un estado, escribe una duda opcional y envíala.
-8. Sin recargar el navegador A, comprueba que aparezca la respuesta y cambien el total y los porcentajes.
-9. En el navegador A, pulsa **Analizar sesión** y comprueba que aparezcan el nivel de confusión, los conceptos y los próximos pasos.
-10. Envía otra respuesta desde un perfil distinto: el mapa anterior se marca como desactualizado hasta que pulses **Actualizar mapa**.
-11. Intenta responder otra vez desde el mismo navegador B: debe mostrarse el límite de una respuesta por dispositivo y sesión.
-12. Finaliza la sesión desde el navegador A. Una carga nueva del enlace muestra la sesión cerrada y cualquier inserción posterior queda bloqueada por la base de datos.
+6. Abre **modo proyector** en otra ventana y comprueba que muestre solo métricas agregadas.
+7. En el **navegador B**, abre `/unirse`, escribe el código o escanea el QR.
+8. Elige un estado, escribe una duda opcional y envíala.
+9. Sin recargar el navegador A ni la proyección, comprueba que cambien el total y los porcentajes.
+10. En el navegador A, pulsa **Analizar sesión** y comprueba el mapa, los tokens, la duración y el costo estimado.
+11. Envía otra respuesta desde un perfil distinto: el mapa anterior se marca como desactualizado hasta que pulses **Actualizar mapa**.
+12. Intenta responder otra vez desde el mismo navegador B: debe mostrarse el límite de una respuesta por dispositivo y sesión.
+13. Finaliza la sesión desde el navegador A. Una carga nueva del enlace muestra la sesión cerrada y cualquier envío posterior queda bloqueado por la operación atómica del servidor.
 
 Para simular varios estudiantes usa perfiles o navegadores independientes. Varias pestañas del mismo perfil comparten el identificador anónimo.
 
@@ -250,17 +265,22 @@ El seed asigna la demo al usuario Auth más antiguo y es repetible: los identifi
 - La clave foránea `(course_id, professor_id)` garantiza en la base de datos que una sesión solo pueda pertenecer a un curso del mismo profesor.
 - Un profesor solo puede leer respuestas asociadas a sus propias sesiones.
 - Un profesor solo puede leer análisis de sus propias sesiones; el navegador no tiene privilegios para insertar ni modificar resultados de IA.
-- La función limita los análisis pagados por profesor y reutiliza resultados únicamente cuando coincide la huella SHA‑256 del contexto y las respuestas enviadas.
+- La función limita análisis pagados a 12 por hora y 20 por cada ventana de 24 horas por profesor, con un tope global de 200 por ventana de 24 horas. La caché no consume cuota.
 - Los estudiantes permanecen sin autenticar y usan el rol `anon` mediante un cliente separado.
 - `anon` no tiene lectura directa de las tablas. La RPC `get_public_session` devuelve solamente los campos mínimos para la pantalla pública.
-- `anon` solo puede insertar las columnas necesarias de una respuesta y únicamente cuando la sesión está activa.
+- `anon` no puede insertar directamente en `responses` ni ejecutar la RPC privilegiada. La Edge Function pública valida, limita y ejecuta una RPC exclusiva de `service_role`.
 - El código corto sirve para encontrar una sesión; no es la frontera de autorización. Esa frontera está en los privilegios y políticas RLS de PostgreSQL.
-- La combinación `(session_id, anonymous_id)` es única y evita una segunda respuesta normal desde el mismo navegador.
+- La combinación `(session_id, anonymous_id)` es única; el servidor deriva ese UUID mediante HMAC por sesión, por lo que un profesor no puede correlacionar el mismo navegador entre clases.
+- Cada clase acepta como máximo 500 respuestas y cada huella de red diaria tiene un límite de 80 intentos por ventana de 15 minutos; los duplicados y rechazos también consumen la cuota. La huella es un HMAC de corta vida calculado con un secreto dedicado; nunca se almacena la IP.
 - No existe ninguna clave privilegiada en el frontend.
-- La Edge Function valida el JWT y la propiedad de la sesión antes de usar su cliente servidor; `OPENAI_API_KEY` vive únicamente en secretos de Supabase.
+- La Edge Function de análisis valida el JWT y la propiedad de la sesión; `OPENAI_API_KEY` vive únicamente en secretos de Supabase.
 - Las dudas se tratan como datos no confiables para reducir prompt injection, y los conteos del mapa se derivan en servidor de referencias reales.
 
-El identificador del estudiante es un UUID aleatorio guardado en `localStorage`. No se solicita nombre, correo ni cuenta, y la interfaz docente no muestra ese UUID. Es un identificador seudónimo de baja fricción, no un mecanismo fuerte de identidad: borrar el almacenamiento local o cambiar de navegador genera otro identificador.
+El identificador del estudiante es un UUID aleatorio guardado en `localStorage`. Antes de guardarlo en Postgres, el servidor genera otro UUID seudónimo específico para la sesión. No se solicita nombre, correo ni cuenta. Sigue siendo un mecanismo de baja fricción: borrar el almacenamiento o cambiar de navegador genera otro identificador, por eso existen además límites de red y capacidad total.
+
+El límite de red y la capacidad total son defensas de MVP, no prueban que cada envío corresponda a una persona. Antes de abrir ClassSignal a cursos masivos o códigos publicados fuera del aula, añade un desafío Turnstile/CAPTCHA verificado en la Edge Function o entrega tickets de participación firmados y de corta duración.
+
+El costo mostrado es una estimación histórica calculada con la tarifa Luna capturada en la ejecución (`US$1/M` tokens de entrada, `US$0.10/M` en caché y `US$6/M` de salida, incluidos los multiplicadores documentados para contextos de más de 272K tokens). La factura oficial de OpenAI sigue siendo la fuente definitiva.
 
 ## Solución de problemas
 
@@ -298,7 +318,7 @@ Es el comportamiento esperado para una segunda respuesta desde el mismo perfil y
 
 ### El estudiante recibe un error de política o la sesión aparece cerrada
 
-Comprueba en el panel docente que la sesión siga activa. La base de datos rechaza inserciones anónimas en sesiones finalizadas, aunque alguien conserve una pestaña antigua abierta.
+Comprueba en el panel docente que la sesión siga activa y que `submit-response` esté desplegada con `verify_jwt=false`. La función y la RPC rechazan sesiones finalizadas aunque alguien conserve una pestaña antigua abierta.
 
 ### El QR abre `localhost` en el teléfono
 

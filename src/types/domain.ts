@@ -114,6 +114,16 @@ export interface SessionAnalysis {
   source_latest_response_at: string
   result: ConfusionMap | null
   error_message: string | null
+  input_tokens: number | null
+  cached_input_tokens: number | null
+  output_tokens: number | null
+  reasoning_tokens: number | null
+  total_tokens: number | null
+  estimated_cost_usd: number | null
+  pricing_version: string | null
+  duration_ms: number | null
+  provider_request_id: string | null
+  provider_response_id: string | null
   created_at: string
   completed_at: string | null
 }

@@ -1,7 +1,9 @@
 import {
   BrainCircuit,
   ChevronDown,
+  CircleDollarSign,
   Clock3,
+  Gauge,
   History,
   Lightbulb,
   RefreshCw,
@@ -10,7 +12,12 @@ import {
 } from 'lucide-react'
 
 import { cn } from '../../lib/cn'
-import { formatDateTime } from '../../lib/format'
+import {
+  formatCompactNumber,
+  formatDateTime,
+  formatDuration,
+  formatEstimatedUsd,
+} from '../../lib/format'
 import { analysisPendingTimeoutMs } from '../../types/domain'
 import type {
   AnalysisSeverity,
@@ -177,6 +184,28 @@ export function ConfusionMapPanel({
               <UsersRound className="size-4" aria-hidden="true" />
               Basado en {analysis.response_count} {analysis.response_count === 1 ? 'respuesta' : 'respuestas'} · {analysis.model}
             </p>
+            {(analysis.total_tokens !== null || analysis.estimated_cost_usd !== null || analysis.duration_ms !== null) && (
+              <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-slate-100 pt-4 text-xs font-semibold text-slate-500" aria-label="Uso del análisis">
+                {analysis.total_tokens !== null && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Gauge className="size-4" aria-hidden="true" />
+                    {formatCompactNumber(analysis.total_tokens)} tokens
+                  </span>
+                )}
+                {analysis.estimated_cost_usd !== null && (
+                  <span className="inline-flex items-center gap-1.5" title="Estimación según los precios de Luna vigentes al ejecutar el análisis">
+                    <CircleDollarSign className="size-4" aria-hidden="true" />
+                    ~{formatEstimatedUsd(analysis.estimated_cost_usd)}
+                  </span>
+                )}
+                {analysis.duration_ms !== null && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Clock3 className="size-4" aria-hidden="true" />
+                    {formatDuration(analysis.duration_ms)}
+                  </span>
+                )}
+              </div>
+            )}
           </article>
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.8fr)]">

@@ -38,12 +38,37 @@ const timeFormatter = new Intl.DateTimeFormat('es-CO', {
   minute: '2-digit',
 })
 
+const compactNumberFormatter = new Intl.NumberFormat('es-CO', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+})
+
+const usdFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 4,
+  maximumFractionDigits: 6,
+})
+
 export function formatDateTime(value: string) {
   return dateFormatter.format(new Date(value))
 }
 
 export function formatTime(value: string) {
   return timeFormatter.format(new Date(value))
+}
+
+export function formatCompactNumber(value: number) {
+  return compactNumberFormatter.format(value)
+}
+
+export function formatEstimatedUsd(value: number) {
+  return usdFormatter.format(value)
+}
+
+export function formatDuration(valueMs: number) {
+  if (valueMs < 1000) return `${valueMs} ms`
+  return `${(valueMs / 1000).toFixed(valueMs < 10_000 ? 1 : 0)} s`
 }
 
 export function buildStatusSummary(

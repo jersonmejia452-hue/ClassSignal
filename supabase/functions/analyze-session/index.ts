@@ -1,6 +1,10 @@
 import { withSupabase } from "@supabase/server";
 
 import type { Database, Json } from "./database.types.ts";
+import {
+  LUNA_PRICING_VERSION,
+  readLunaUsage,
+} from "./openai-usage.ts";
 
 const MODEL = "gpt-5.6-luna";
 const PROMPT_VERSION = 1;
@@ -78,9 +82,24 @@ interface OpenAIOutputItem {
 }
 
 interface OpenAIResponse {
+  id?: unknown;
   status?: unknown;
   output?: unknown;
   incomplete_details?: { reason?: unknown };
+  usage?: unknown;
+}
+
+interface AnalysisTelemetry {
+  input_tokens: number | null;
+  cached_input_tokens: number | null;
+  output_tokens: number | null;
+  reasoning_tokens: number | null;
+  total_tokens: number | null;
+  estimated_cost_usd: number | null;
+  pricing_version: string;
+  duration_ms: number;
+  provider_request_id: string | null;
+  provider_response_id: string | null;
 }
 
 class PublicFunctionError extends Error {
@@ -88,6 +107,7 @@ class PublicFunctionError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    readonly telemetry: AnalysisTelemetry | null = null,
   ) {
     super(message);
   }
@@ -194,6 +214,46 @@ function boundedText(value: unknown, maxLength: number) {
   const normalized = value.trim();
   if (!normalized) return null;
   return normalized.slice(0, maxLength);
+}
+
+function buildAnalysisTelemetry(
+  requestStartedAt: number,
+  providerResponse: Response | null,
+  providerBody: unknown,
+): AnalysisTelemetry {
+  const response = isRecord(providerBody)
+    ? providerBody as OpenAIResponse
+    : null;
+  const usage = readLunaUsage(response?.usage);
+
+  return {
+    input_tokens: usage?.inputTokens ?? null,
+    cached_input_tokens: usage?.cachedInputTokens ?? null,
+    output_tokens: usage?.outputTokens ?? null,
+    reasoning_tokens: usage?.reasoningTokens ?? null,
+    total_tokens: usage?.totalTokens ?? null,
+    estimated_cost_usd: usage?.estimatedCost ?? null,
+    pricing_version: LUNA_PRICING_VERSION,
+    duration_ms: Math.max(0, Math.round(performance.now() - requestStartedAt)),
+    provider_request_id: boundedText(
+      providerResponse?.headers.get("x-request-id"),
+      200,
+    ),
+    provider_response_id: boundedText(response?.id, 200),
+  };
+}
+
+function attachTelemetry(
+  error: unknown,
+  telemetry: AnalysisTelemetry,
+) {
+  if (!(error instanceof PublicFunctionError) || error.telemetry) return error;
+  return new PublicFunctionError(
+    error.status,
+    error.code,
+    error.message,
+    telemetry,
+  );
 }
 
 async function createSourceFingerprint(
@@ -442,6 +502,7 @@ async function requestConfusionMap(
   );
 
   let providerResponse: Response;
+  const requestStartedAt = performance.now();
   try {
     providerResponse = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -500,14 +561,29 @@ async function requestConfusionMap(
         504,
         "provider_timeout",
         "El análisis tardó demasiado. Intenta nuevamente.",
+        buildAnalysisTelemetry(requestStartedAt, null, null),
       );
     }
     throw new PublicFunctionError(
       502,
       "provider_unavailable",
       "No pudimos conectar con OpenAI. Intenta nuevamente.",
+      buildAnalysisTelemetry(requestStartedAt, null, null),
     );
   }
+
+  let providerBody: unknown = null;
+  try {
+    providerBody = await providerResponse.json();
+  } catch {
+    // HTTP status still determines the public error below. A successful
+    // response without JSON is handled as an invalid provider response.
+  }
+  const telemetry = buildAnalysisTelemetry(
+    requestStartedAt,
+    providerResponse,
+    providerBody,
+  );
 
   if (!providerResponse.ok) {
     if (providerResponse.status === 401 || providerResponse.status === 403) {
@@ -515,6 +591,7 @@ async function requestConfusionMap(
         503,
         "invalid_openai_key",
         "La credencial de OpenAI configurada no es válida.",
+        telemetry,
       );
     }
     if (providerResponse.status === 429) {
@@ -522,6 +599,7 @@ async function requestConfusionMap(
         429,
         "provider_rate_limit",
         "OpenAI alcanzó un límite temporal. Intenta nuevamente en unos minutos.",
+        telemetry,
       );
     }
     if (providerResponse.status >= 500) {
@@ -529,30 +607,49 @@ async function requestConfusionMap(
         502,
         "provider_unavailable",
         "OpenAI no está disponible temporalmente. Intenta nuevamente.",
+        telemetry,
       );
     }
     throw new PublicFunctionError(
       502,
       "provider_rejected_request",
       "OpenAI no pudo procesar el análisis. Intenta nuevamente.",
+      telemetry,
     );
   }
 
-  const providerBody: unknown = await providerResponse.json();
-  const serializedMap = extractOpenAIText(providerBody);
-
-  let parsedMap: unknown;
-  try {
-    parsedMap = JSON.parse(serializedMap);
-  } catch {
+  if (providerBody === null) {
     throw new PublicFunctionError(
       502,
-      "invalid_model_json",
-      "El análisis no produjo JSON válido. Intenta nuevamente.",
+      "invalid_provider_json",
+      "OpenAI devolvió una respuesta no utilizable. Intenta nuevamente.",
+      telemetry,
     );
   }
 
-  return buildConfusionMap(parseRawConfusionMap(parsedMap), sourceResponses);
+  try {
+    const serializedMap = extractOpenAIText(providerBody);
+    let parsedMap: unknown;
+    try {
+      parsedMap = JSON.parse(serializedMap);
+    } catch {
+      throw new PublicFunctionError(
+        502,
+        "invalid_model_json",
+        "El análisis no produjo JSON válido. Intenta nuevamente.",
+      );
+    }
+
+    return {
+      result: buildConfusionMap(
+        parseRawConfusionMap(parsedMap),
+        sourceResponses,
+      ),
+      telemetry,
+    };
+  } catch (error) {
+    throw attachTelemetry(error, telemetry);
+  }
 }
 
 function isUuid(value: unknown): value is string {
@@ -588,6 +685,7 @@ const analyzeSession = withSupabase<Database>(
     }
 
     let analysisId: string | null = null;
+    let analysisTelemetry: AnalysisTelemetry | null = null;
 
     try {
       const body: unknown = await request.json();
@@ -730,12 +828,24 @@ const analyzeSession = withSupabase<Database>(
       if (createError) {
         if (
           getErrorCode(createError) === "P0001" &&
-          getDatabaseErrorMessage(createError) === "analysis_rate_limit"
+          [
+            "analysis_hourly_limit",
+            "analysis_daily_limit",
+            "analysis_global_limit",
+            "analysis_rate_limit",
+          ].includes(getDatabaseErrorMessage(createError) ?? "")
         ) {
+          const quotaError = getDatabaseErrorMessage(createError);
+          const isGlobalLimit = quotaError === "analysis_global_limit";
+          const isDailyLimit = quotaError === "analysis_daily_limit";
           throw new PublicFunctionError(
             429,
-            "analysis_rate_limit",
-            "Alcanzaste el límite temporal de análisis. Intenta de nuevo más tarde.",
+            quotaError ?? "analysis_rate_limit",
+            isGlobalLimit
+              ? "ClassSignal alcanzó el presupuesto diario de análisis. Intenta mañana."
+              : isDailyLimit
+              ? "Alcanzaste el límite diario de análisis. Intenta mañana."
+              : "Alcanzaste el límite temporal de análisis. Intenta de nuevo más tarde.",
           );
         }
         if (getErrorCode(createError) === "23505") {
@@ -753,16 +863,21 @@ const analyzeSession = withSupabase<Database>(
 
       const createdAnalysisId = createdAnalysis.id;
       analysisId = createdAnalysisId;
-      const result = await requestConfusionMap(
+      const { result, telemetry } = await requestConfusionMap(
         openAIKey,
         session as SessionRow,
         sourceResponses,
       );
+      analysisTelemetry = telemetry;
 
       const { data: completedAnalysis, error: completeError } = await context
         .supabaseAdmin
         .from("session_analyses")
-        .update({ status: "completed", result: result as unknown as Json })
+        .update({
+          status: "completed",
+          result: result as unknown as Json,
+          ...telemetry,
+        })
         .eq("id", createdAnalysisId)
         .eq("professor_id", professorId)
         .eq("status", "pending")
@@ -788,6 +903,7 @@ const analyzeSession = withSupabase<Database>(
           .update({
             status: "failed",
             error_message: publicError.message.slice(0, 500),
+            ...(publicError.telemetry ?? analysisTelemetry ?? {}),
           })
           .eq("id", analysisId)
           .eq("professor_id", professorId)

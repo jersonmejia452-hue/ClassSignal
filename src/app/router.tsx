@@ -40,6 +40,16 @@ const SessionDetailPage = lazy(() =>
     default: module.SessionDetailPage,
   })),
 )
+const SessionPresentationPage = lazy(() =>
+  import('../pages/professor/SessionPresentationPage').then((module) => ({
+    default: module.SessionPresentationPage,
+  })),
+)
+const JoinSessionPage = lazy(() =>
+  import('../pages/student/JoinSessionPage').then((module) => ({
+    default: module.JoinSessionPage,
+  })),
+)
 const StudentSessionPage = lazy(() =>
   import('../pages/student/StudentSessionPage').then((module) => ({
     default: module.StudentSessionPage,
@@ -63,7 +73,7 @@ const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <Navigate replace to="/profesor" />,
+        element: <Navigate replace to="/unirse" />,
       },
       {
         path: 'profesor/login',
@@ -72,6 +82,10 @@ const router = createBrowserRouter([
       {
         element: <RequireProfessor />,
         children: [
+          {
+            path: 'profesor/sesion/:id/presentar',
+            element: <SessionPresentationPage />,
+          },
           {
             path: 'profesor',
             element: <ProfessorLayout />,
@@ -103,6 +117,10 @@ const router = createBrowserRouter([
             ],
           },
         ],
+      },
+      {
+        path: 'unirse',
+        element: <JoinSessionPage />,
       },
       {
         path: 's/:code',

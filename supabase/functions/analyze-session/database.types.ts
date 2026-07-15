@@ -77,49 +77,79 @@ export type Database = {
       };
       session_analyses: {
         Row: {
+          cached_input_tokens: number | null;
           completed_at: string | null;
           created_at: string;
+          duration_ms: number | null;
           error_message: string | null;
+          estimated_cost_usd: number | null;
           id: string;
+          input_tokens: number | null;
           model: string;
+          output_tokens: number | null;
+          pricing_version: string | null;
           professor_id: string;
           prompt_version: number;
+          provider_request_id: string | null;
+          provider_response_id: string | null;
+          reasoning_tokens: number | null;
           response_count: number;
           result: Json | null;
           session_id: string;
           source_fingerprint: string;
           source_latest_response_at: string;
           status: string;
+          total_tokens: number | null;
         };
         Insert: {
+          cached_input_tokens?: number | null;
           completed_at?: string | null;
           created_at?: string;
+          duration_ms?: number | null;
           error_message?: string | null;
+          estimated_cost_usd?: number | null;
           id?: string;
+          input_tokens?: number | null;
           model: string;
+          output_tokens?: number | null;
+          pricing_version?: string | null;
           professor_id: string;
           prompt_version: number;
+          provider_request_id?: string | null;
+          provider_response_id?: string | null;
+          reasoning_tokens?: number | null;
           response_count: number;
           result?: Json | null;
           session_id: string;
           source_fingerprint: string;
           source_latest_response_at: string;
           status?: string;
+          total_tokens?: number | null;
         };
         Update: {
+          cached_input_tokens?: number | null;
           completed_at?: string | null;
           created_at?: string;
+          duration_ms?: number | null;
           error_message?: string | null;
+          estimated_cost_usd?: number | null;
           id?: string;
+          input_tokens?: number | null;
           model?: string;
+          output_tokens?: number | null;
+          pricing_version?: string | null;
           professor_id?: string;
           prompt_version?: number;
+          provider_request_id?: string | null;
+          provider_response_id?: string | null;
+          reasoning_tokens?: number | null;
           response_count?: number;
           result?: Json | null;
           session_id?: string;
           source_fingerprint?: string;
           source_latest_response_at?: string;
           status?: string;
+          total_tokens?: number | null;
         };
         Relationships: [{
           foreignKeyName: "session_analyses_session_owner_fkey";
@@ -192,19 +222,29 @@ export type Database = {
           p_source_latest_response_at: string;
         };
         Returns: {
+          cached_input_tokens: number | null;
           completed_at: string | null;
           created_at: string;
+          duration_ms: number | null;
           error_message: string | null;
+          estimated_cost_usd: number | null;
           id: string;
+          input_tokens: number | null;
           model: string;
+          output_tokens: number | null;
+          pricing_version: string | null;
           professor_id: string;
           prompt_version: number;
+          provider_request_id: string | null;
+          provider_response_id: string | null;
+          reasoning_tokens: number | null;
           response_count: number;
           result: Json | null;
           session_id: string;
           source_fingerprint: string;
           source_latest_response_at: string;
           status: string;
+          total_tokens: number | null;
         };
         SetofOptions: {
           from: "*";
@@ -223,6 +263,26 @@ export type Database = {
           title: string;
           topic: string;
         };
+      };
+      submit_student_response_server: {
+        Args: {
+          p_anonymous_id: string;
+          p_network_fingerprint: string;
+          p_question_text: string | null;
+          p_session_id: string;
+          p_status: string;
+        };
+        Returns: string;
+      };
+      submit_student_response_server_v2: {
+        Args: {
+          p_anonymous_id: string;
+          p_network_fingerprint: string;
+          p_question_text: string | null;
+          p_session_id: string;
+          p_status: string;
+        };
+        Returns: Json;
       };
     };
     Enums: { [_ in never]: never };

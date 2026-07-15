@@ -13,4 +13,15 @@ export const responseSchema = z.object({
     .optional(),
 })
 
+export const responseSubmissionSchema = z.object({
+  accepted: z.literal(true),
+})
+
+export const responseSubmissionErrorSchema = z.object({
+  error: z.object({
+    code: z.string().min(1),
+    message: z.string().min(1),
+  }),
+})
+
 export type ResponseFormValues = z.infer<typeof responseSchema>

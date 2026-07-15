@@ -1,7 +1,21 @@
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
+import {
+  responseSubmissionErrorSchema,
+  responseSubmissionSchema,
+} from '../schemas/response'
 import type { ResponseDraft, StudentResponse } from '../types/domain'
 import { getPublicSupabase, getTeacherSupabase } from './supabase'
+
+export class ResponseSubmissionError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+  ) {
+    super(message)
+    this.name = 'ResponseSubmissionError'
+  }
+}
 
 export async function getSessionResponses(sessionId: string) {
   const { data, error } = await getTeacherSupabase()
@@ -15,14 +29,50 @@ export async function getSessionResponses(sessionId: string) {
 }
 
 export async function submitStudentResponse(values: ResponseDraft) {
-  const { error } = await getPublicSupabase().from('responses').insert({
-    session_id: values.sessionId,
-    anonymous_id: values.anonymousId,
-    status: values.status,
-    question_text: values.questionText?.trim() || null,
-  })
+  const { data, error } = await getPublicSupabase().functions.invoke(
+    'submit-response',
+    { body: {
+      sessionId: values.sessionId,
+      anonymousId: values.anonymousId,
+      status: values.status,
+      questionText: values.questionText?.trim() || null,
+    } },
+  )
 
-  if (error) throw error
+  if (error) {
+    if (
+      typeof error === 'object'
+      && error !== null
+      && 'context' in error
+      && error.context instanceof Response
+    ) {
+      try {
+        const payload: unknown = await error.context.clone().json()
+        const parsedError = responseSubmissionErrorSchema.safeParse(payload)
+        if (parsedError.success) {
+          throw new ResponseSubmissionError(
+            parsedError.data.error.message,
+            parsedError.data.error.code,
+          )
+        }
+      } catch (parseError) {
+        if (parseError instanceof ResponseSubmissionError) throw parseError
+      }
+    }
+
+    throw new ResponseSubmissionError(
+      'No pudimos enviar tu respuesta. Intenta nuevamente.',
+      'submission_failed',
+    )
+  }
+
+  const parsed = responseSubmissionSchema.safeParse(data)
+  if (!parsed.success) {
+    throw new ResponseSubmissionError(
+      'El servidor devolvió una confirmación inesperada.',
+      'invalid_submission_response',
+    )
+  }
 }
 
 export function subscribeToSessionResponses(

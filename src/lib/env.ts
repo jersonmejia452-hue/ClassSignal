@@ -5,10 +5,16 @@ const optionalUrl = z.preprocess(
   z.string().url().optional(),
 )
 
+const booleanString = z.preprocess(
+  (value) => (value === undefined || value === '' ? 'false' : value),
+  z.enum(['true', 'false']).transform((value) => value === 'true'),
+)
+
 const envSchema = z.object({
   VITE_SUPABASE_URL: z.string().url(),
   VITE_SUPABASE_PUBLISHABLE_KEY: z.string().min(20),
   VITE_PUBLIC_APP_URL: optionalUrl,
+  VITE_PROFESSOR_SIGNUP_ENABLED: booleanString,
 })
 
 const result = envSchema.safeParse(import.meta.env)

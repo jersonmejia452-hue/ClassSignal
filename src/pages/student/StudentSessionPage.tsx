@@ -105,11 +105,15 @@ export function StudentSessionPage() {
     } catch (error) {
       const errorCode = getErrorCode(error)
 
-      if (errorCode === '23505') {
+      if (errorCode === 'duplicate_response') {
         setSubmitError('Ya enviaste una respuesta desde este dispositivo para esta clase.')
-      } else if (errorCode === '42501') {
+      } else if (errorCode === 'session_inactive') {
         setSubmitError('La clase ya no está recibiendo respuestas.')
         setSession((current) => (current ? { ...current, is_active: false } : current))
+      } else if (errorCode === 'response_rate_limit') {
+        setSubmitError('Se recibieron demasiados envíos desde esta red. Espera unos minutos.')
+      } else if (errorCode === 'session_response_limit') {
+        setSubmitError('La clase alcanzó su capacidad máxima de respuestas.')
       } else {
         setSubmitError(
           getErrorMessage(error, 'No pudimos enviar tu respuesta. Intenta otra vez.'),
@@ -236,13 +240,15 @@ export function StudentSessionPage() {
 
             {submitError && <Alert className="mt-6" tone="error">{submitError}</Alert>}
 
-            <Button className="mt-7" fullWidth isLoading={isSubmitting} type="submit">
-              Enviar de forma anónima
-              {!isSubmitting && <ArrowRight className="size-4" aria-hidden="true" />}
-            </Button>
-            <p className="mt-3 text-center text-xs leading-5 text-slate-400">
-              Una respuesta por dispositivo en esta clase.
-            </p>
+            <div className="sticky bottom-3 z-20 mt-7 rounded-2xl border border-slate-200/80 bg-white/95 p-2 shadow-[0_14px_35px_rgba(7,26,43,0.16)] backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
+              <Button fullWidth isLoading={isSubmitting} type="submit">
+                Enviar de forma anónima
+                {!isSubmitting && <ArrowRight className="size-4" aria-hidden="true" />}
+              </Button>
+              <p className="mt-2 text-center text-xs leading-5 text-slate-400 sm:mt-3">
+                Una respuesta por dispositivo en esta clase.
+              </p>
+            </div>
           </form>
         )}
       </div>
@@ -254,7 +260,12 @@ function StudentHeader() {
   return (
     <header className="border-b border-white/10 bg-[#071a2b] text-white shadow-[0_8px_25px_rgba(7,26,43,0.12)]">
       <div className="mx-auto flex min-h-[4.75rem] max-w-xl items-center justify-between gap-3 px-5 py-3">
-        <Brand inverse to="/" />
+        <div className="sm:hidden">
+          <Brand compact inverse to="/unirse" />
+        </div>
+        <div className="hidden sm:block">
+          <Brand inverse to="/unirse" />
+        </div>
         <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold tracking-wide text-[#87eadc]">
           <span className="size-1.5 rounded-full bg-[#66e2d1]" aria-hidden="true" />
           Modo estudiante

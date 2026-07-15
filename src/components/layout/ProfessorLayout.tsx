@@ -17,6 +17,14 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
       : 'text-slate-300 hover:bg-white/8 hover:text-white',
   )
 
+const mobileNavLinkClass = ({ isActive }: { isActive: boolean }) =>
+  cn(
+    'flex min-h-14 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-3 py-1.5 text-[0.7rem] font-extrabold transition focus-visible:outline-2 focus-visible:outline-blue-600',
+    isActive
+      ? 'bg-blue-50 text-blue-800'
+      : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900',
+  )
+
 export function ProfessorLayout() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
@@ -41,10 +49,15 @@ export function ProfessorLayout() {
     <div className="signal-shell min-h-screen bg-[#f4f7fb]">
       <header className="sticky top-0 z-40 border-b border-white/10 bg-[#071a2b]/96 text-white shadow-[0_8px_30px_rgba(7,26,43,0.12)] backdrop-blur-xl">
         <div className="mx-auto flex min-h-[4.75rem] max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
-          <Brand inverse to="/profesor" />
+          <div className="sm:hidden">
+            <Brand compact inverse to="/profesor" />
+          </div>
+          <div className="hidden sm:block">
+            <Brand inverse to="/profesor" />
+          </div>
 
           <div className="flex min-w-0 items-center gap-1 sm:gap-2">
-            <nav className="flex items-center gap-1" aria-label="Navegación del profesor">
+            <nav className="hidden items-center gap-1 sm:flex" aria-label="Navegación del profesor">
               <NavLink className={navLinkClass} end to="/profesor">
                 <BookOpenCheck className="size-4" aria-hidden="true" />
                 <span className="sr-only sm:not-sr-only">Mis cursos</span>
@@ -79,9 +92,25 @@ export function ProfessorLayout() {
         </div>
       )}
 
-      <main className="relative mx-auto max-w-7xl px-4 py-7 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
+      <main className="relative mx-auto max-w-7xl px-4 pt-7 pb-28 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
         <Outlet />
       </main>
+
+      <nav
+        aria-label="Navegación principal del profesor"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shadow-[0_-12px_35px_rgba(7,26,43,0.09)] backdrop-blur-xl sm:hidden"
+      >
+        <div className="mx-auto flex max-w-md gap-2">
+          <NavLink className={mobileNavLinkClass} end to="/profesor">
+            <BookOpenCheck className="size-5" aria-hidden="true" />
+            Mis cursos
+          </NavLink>
+          <NavLink className={mobileNavLinkClass} to="/profesor/cursos/nuevo">
+            <Plus className="size-5" aria-hidden="true" />
+            Nuevo curso
+          </NavLink>
+        </div>
+      </nav>
     </div>
   )
 }

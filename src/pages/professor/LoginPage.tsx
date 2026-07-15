@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, RadioTower, ShieldCheck } from 'lucide-react'
-import { Navigate, useLocation } from 'react-router-dom'
+import { Link, Navigate, useLocation } from 'react-router-dom'
 
 import { Alert } from '../../components/ui/Alert'
 import { Brand } from '../../components/ui/Brand'
@@ -10,6 +10,7 @@ import { LoadingScreen } from '../../components/ui/LoadingScreen'
 import { useAuth } from '../../context/AuthContext'
 import { cn } from '../../lib/cn'
 import { getAuthErrorMessage } from '../../lib/errors'
+import { env } from '../../lib/env'
 import { authSchema } from '../../schemas/auth'
 import {
   signInProfessor,
@@ -29,6 +30,7 @@ export function LoginPage() {
   const location = useLocation()
   const state = location.state as LoginLocationState | null
   const destination = state?.from?.pathname || '/profesor'
+  const signupEnabled = env?.VITE_PROFESSOR_SIGNUP_ENABLED ?? false
 
   const [mode, setMode] = useState<AuthMode>('signin')
   const [email, setEmail] = useState('')
@@ -43,6 +45,7 @@ export function LoginPage() {
   if (user) return <Navigate to={destination} replace />
 
   const changeMode = (nextMode: AuthMode) => {
+    if (nextMode === 'signup' && !signupEnabled) return
     setMode(nextMode)
     setErrors({})
     setSubmitError(null)
@@ -155,24 +158,30 @@ export function LoginPage() {
               : 'Crea tu cuenta docente y prepara tu primer curso.'}
           </p>
 
-          <div className="mt-7 grid grid-cols-2 rounded-2xl border border-slate-200 bg-slate-100/80 p-1" role="group" aria-label="Tipo de acceso">
-            {(['signin', 'signup'] as AuthMode[]).map((item) => (
-              <button
-                aria-pressed={mode === item}
-                className={cn(
-                  'min-h-11 rounded-xl px-3 text-sm font-extrabold transition focus-visible:outline-2 focus-visible:outline-blue-600',
-                  mode === item
-                    ? 'bg-white text-[#071a2b] shadow-sm'
-                    : 'text-slate-500 hover:text-slate-800',
-                )}
-                key={item}
-                onClick={() => changeMode(item)}
-                type="button"
-              >
-                {item === 'signin' ? 'Iniciar sesión' : 'Crear cuenta'}
-              </button>
-            ))}
-          </div>
+          {signupEnabled ? (
+            <div className="mt-7 grid grid-cols-2 rounded-2xl border border-slate-200 bg-slate-100/80 p-1" role="group" aria-label="Tipo de acceso">
+              {(['signin', 'signup'] as AuthMode[]).map((item) => (
+                <button
+                  aria-pressed={mode === item}
+                  className={cn(
+                    'min-h-11 rounded-xl px-3 text-sm font-extrabold transition focus-visible:outline-2 focus-visible:outline-blue-600',
+                    mode === item
+                      ? 'bg-white text-[#071a2b] shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800',
+                  )}
+                  key={item}
+                  onClick={() => changeMode(item)}
+                  type="button"
+                >
+                  {item === 'signin' ? 'Iniciar sesión' : 'Crear cuenta'}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-7 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-950">
+              El acceso docente se habilita por invitación para proteger las clases y el presupuesto de análisis.
+            </div>
+          )}
 
           {confirmationEmail ? (
             <div className="mt-7">
@@ -240,6 +249,12 @@ export function LoginPage() {
           <p className="mt-7 flex items-start justify-center gap-2 text-center text-xs leading-5 text-slate-500">
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-teal-600" aria-hidden="true" />
             Supabase protege el acceso docente. Tus estudiantes participan sin crear una cuenta.
+          </p>
+          <p className="mt-4 text-center text-sm text-slate-500">
+            ¿Eres estudiante?{' '}
+            <Link className="font-extrabold text-blue-700 underline-offset-4 hover:underline" to="/unirse">
+              Ingresa con el código de tu clase
+            </Link>
           </p>
         </div>
       </section>

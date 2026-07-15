@@ -80,6 +80,11 @@ deno_version = 2
 [functions.analyze-session]
 verify_jwt = true
 
+# Students have no Auth account. This function performs strict body validation,
+# rate limiting, and a service-role-only atomic RPC before accepting a response.
+[functions.submit-response]
+verify_jwt = false
+
 [analytics]
 enabled = false
 port = 55327
