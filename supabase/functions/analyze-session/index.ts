@@ -2,7 +2,7 @@ import { withSupabase } from "@supabase/server";
 
 import type { Database, Json } from "./database.types.ts";
 
-const MODEL = "gpt-5.6-sol";
+const MODEL = "gpt-5.6-luna";
 const PROMPT_VERSION = 1;
 const MAX_RESPONSES = 500;
 const PENDING_TIMEOUT_MS = 10 * 60 * 1000;
@@ -453,8 +453,8 @@ async function requestConfusionMap(
       body: JSON.stringify({
         model: MODEL,
         store: false,
-        max_output_tokens: 3000,
-        reasoning: { effort: "low" },
+        max_output_tokens: 6000,
+        reasoning: { effort: "xhigh" },
         input: [
           {
             role: "system",
