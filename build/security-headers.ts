@@ -58,13 +58,3 @@ export function createSecurityHeaders(
       : {}),
   }
 }
-
-export function createStaticAssetHeadersFile(
-  supabaseUrl: string | undefined,
-) {
-  const headerLines = Object.entries(
-    createSecurityHeaders(supabaseUrl, true),
-  ).map(([name, value]) => `  ${name}: ${value}`)
-
-  return ['/*', ...headerLines, ''].join('\n')
-}

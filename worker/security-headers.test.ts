@@ -1,13 +1,15 @@
+import { readFileSync } from 'node:fs'
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { workerAssetsConfig } from '../build/worker-assets-config'
-import { createStaticAssetHeadersFile } from '../build/security-headers'
 import worker, {
   applySecurityHeaders,
   createContentSecurityPolicy,
 } from './index'
 
 const supabaseUrl = 'https://project-ref.supabase.co'
+const productionSupabaseUrl = 'https://jkqedwixmuvtrqmzhqtc.supabase.co'
 
 const expectedHeaders = {
   'content-security-policy': [
@@ -161,8 +163,11 @@ describe('security headers', () => {
   })
 
   it('generates matching headers for asset-first hosting responses', () => {
-    const staticHeaders = createStaticAssetHeadersFile(supabaseUrl)
-    const policy = createContentSecurityPolicy(supabaseUrl)
+    const staticHeaders = readFileSync(
+      new URL('../public/_headers', import.meta.url),
+      'utf8',
+    )
+    const policy = createContentSecurityPolicy(productionSupabaseUrl)
 
     expect(staticHeaders).toContain(`Content-Security-Policy: ${policy}`)
     expect(staticHeaders).toContain(
