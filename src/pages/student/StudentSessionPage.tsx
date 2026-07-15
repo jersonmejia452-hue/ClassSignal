@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ArrowRight, CheckCircle2, Clock3, LockKeyhole, MessageSquareText } from 'lucide-react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 
 import { StatusSelector } from '../../components/responses/StatusSelector'
 import {
@@ -347,7 +347,13 @@ export function StudentSessionPage() {
               </Button>
               <p className="mt-2 text-center text-xs leading-5 text-slate-400 sm:mt-3">
                 Una respuesta por dispositivo. Turnstile procesa señales técnicas para evitar abuso;
-                ClassSignal no guarda tu IP en la base de datos.
+                ClassSignal no guarda tu IP en la base de datos.{' '}
+                <Link
+                  className="font-bold text-slate-500 underline underline-offset-2 hover:text-slate-700"
+                  to="/privacidad"
+                >
+                  Privacidad
+                </Link>
               </p>
             </div>
           </form>

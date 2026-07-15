@@ -230,6 +230,7 @@ npm run preview  # vista local del build generado
 | `/profesor/sesion/:id` | Profesor propietario | QR, código, estado, resumen y respuestas en vivo |
 | `/profesor/sesion/:id/presentar` | Profesor propietario | QR, código y pulso agregado para proyectar |
 | `/s/:codigo` | Público, sin cuenta | Respuesta anónima del estudiante |
+| `/privacidad` | Público | Aviso técnico de privacidad y proveedores del MVP |
 
 ## Estructura del proyecto
 

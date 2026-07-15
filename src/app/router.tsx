@@ -10,6 +10,9 @@ import { RouteErrorPage } from '../pages/RouteErrorPage'
 const NotFoundPage = lazy(() =>
   import('../pages/NotFoundPage').then((module) => ({ default: module.NotFoundPage })),
 )
+const PrivacyPage = lazy(() =>
+  import('../pages/PrivacyPage').then((module) => ({ default: module.PrivacyPage })),
+)
 const DashboardPage = lazy(() =>
   import('../pages/professor/DashboardPage').then((module) => ({
     default: module.DashboardPage,
@@ -125,6 +128,10 @@ const router = createBrowserRouter([
       {
         path: 's/:code',
         element: <StudentSessionPage />,
+      },
+      {
+        path: 'privacidad',
+        element: <PrivacyPage />,
       },
       {
         path: '*',
