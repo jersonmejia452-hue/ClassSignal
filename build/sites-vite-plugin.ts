@@ -1,6 +1,8 @@
-import { access, cp, mkdir, rm } from 'node:fs/promises'
+import { access, cp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import type { Plugin } from 'vite'
+
+import { createStaticAssetHeadersFile } from './security-headers'
 
 async function exists(path: string) {
   try {
@@ -12,7 +14,11 @@ async function exists(path: string) {
   }
 }
 
-export function sites(): Plugin {
+interface SitesPluginOptions {
+  supabaseUrl?: string
+}
+
+export function sites(options: SitesPluginOptions = {}): Plugin {
   let root = process.cwd()
 
   return {
@@ -30,6 +36,16 @@ export function sites(): Plugin {
 
       if (await exists(hostingConfig)) {
         await cp(hostingConfig, resolve(outputDirectory, 'hosting.json'))
+      }
+
+      const clientOutputDirectory = resolve(root, 'dist', 'client')
+
+      if (await exists(clientOutputDirectory)) {
+        await writeFile(
+          resolve(clientOutputDirectory, '_headers'),
+          createStaticAssetHeadersFile(options.supabaseUrl),
+          'utf8',
+        )
       }
     },
   }

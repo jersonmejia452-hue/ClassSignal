@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { workerAssetsConfig } from '../build/worker-assets-config'
+import { createStaticAssetHeadersFile } from '../build/security-headers'
 import worker, {
   applySecurityHeaders,
   createContentSecurityPolicy,
@@ -157,5 +158,17 @@ describe('security headers', () => {
 
   it('runs the worker before static assets so production receives the headers', () => {
     expect(workerAssetsConfig.run_worker_first).toBe(true)
+  })
+
+  it('generates matching headers for asset-first hosting responses', () => {
+    const staticHeaders = createStaticAssetHeadersFile(supabaseUrl)
+    const policy = createContentSecurityPolicy(supabaseUrl)
+
+    expect(staticHeaders).toContain(`Content-Security-Policy: ${policy}`)
+    expect(staticHeaders).toContain(
+      'Strict-Transport-Security: max-age=31536000',
+    )
+    expect(staticHeaders).toContain('X-Content-Type-Options: nosniff')
+    expect(staticHeaders).not.toContain('*.supabase.co')
   })
 })
