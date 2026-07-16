@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, RadioTower, ShieldCheck } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, PlayCircle, RadioTower, ShieldCheck } from 'lucide-react'
 import { Link, Navigate, useLocation } from 'react-router-dom'
 
 import { Alert } from '../../components/ui/Alert'
@@ -245,6 +245,25 @@ export function LoginPage() {
               </Button>
             </form>
           )}
+
+          <div className="mt-7 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
+            <p className="text-xs font-extrabold tracking-[0.12em] text-teal-800 uppercase">
+              Explora antes de entrar
+            </p>
+            <Link
+              className="mt-2 flex min-h-12 items-center justify-between gap-3 rounded-xl bg-[#071a2b] px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-[#0d2942] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+              to="/demo"
+            >
+              <span className="inline-flex items-center gap-2">
+                <PlayCircle className="size-5 text-[#66e2d1]" aria-hidden="true" />
+                Ver demo guiada
+              </span>
+              <span className="text-xs text-slate-300">90 segundos</span>
+            </Link>
+            <p className="mt-2 text-xs leading-5 text-teal-950">
+              Usa datos simulados y no consume análisis de OpenAI.
+            </p>
+          </div>
 
           <p className="mt-7 flex items-start justify-center gap-2 text-center text-xs leading-5 text-slate-500">
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-teal-600" aria-hidden="true" />

@@ -1,15 +1,21 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, BookOpen, CalendarPlus2, Plus, RadioTower, RefreshCw } from 'lucide-react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 
 import { SessionCard } from '../../components/sessions/SessionCard'
+import { CoursePulseHistory } from '../../components/courses/CoursePulseHistory'
 import { Alert } from '../../components/ui/Alert'
 import { Button } from '../../components/ui/Button'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { getErrorMessage } from '../../lib/errors'
 import { getCourseById } from '../../services/courses.service'
+import { getCoursePulseHistory } from '../../services/coursePulse.service'
 import { getSessionsByCourse } from '../../services/sessions.service'
-import type { ClassSession, Course } from '../../types/domain'
+import type {
+  ClassSession,
+  Course,
+  CoursePulsePoint,
+} from '../../types/domain'
 
 interface CourseLocationState {
   justCreated?: boolean
@@ -21,11 +27,21 @@ export function CourseDetailPage() {
   const locationState = location.state as CourseLocationState | null
   const [course, setCourse] = useState<Course | null>(null)
   const [sessions, setSessions] = useState<ClassSession[]>([])
+  const [pulsePoints, setPulsePoints] = useState<CoursePulsePoint[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingPulse, setIsLoadingPulse] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [pulseError, setPulseError] = useState<string | null>(null)
+  const courseRequestId = useRef(0)
+  const pulseRequestId = useRef(0)
 
   const loadCourse = useCallback(async () => {
+    const requestId = courseRequestId.current + 1
+    courseRequestId.current = requestId
+
     if (!courseId) {
+      setCourse(null)
+      setSessions([])
       setError('El curso solicitado no es válido.')
       setIsLoading(false)
       return
@@ -33,24 +49,68 @@ export function CourseDetailPage() {
 
     setIsLoading(true)
     setError(null)
+    setCourse(null)
+    setSessions([])
 
     try {
       const [courseResult, sessionResult] = await Promise.all([
         getCourseById(courseId),
         getSessionsByCourse(courseId),
       ])
+      if (requestId !== courseRequestId.current) return
+
       setCourse(courseResult)
       setSessions(sessionResult)
     } catch (loadError) {
+      if (requestId !== courseRequestId.current) return
+
       setError(getErrorMessage(loadError, 'No pudimos cargar este curso.'))
     } finally {
-      setIsLoading(false)
+      if (requestId === courseRequestId.current) {
+        setIsLoading(false)
+      }
+    }
+  }, [courseId])
+
+  const loadPulse = useCallback(async () => {
+    const requestId = pulseRequestId.current + 1
+    pulseRequestId.current = requestId
+
+    if (!courseId) {
+      setPulsePoints([])
+      setIsLoadingPulse(false)
+      return
+    }
+
+    setIsLoadingPulse(true)
+    setPulseError(null)
+    setPulsePoints([])
+
+    try {
+      const result = await getCoursePulseHistory(courseId)
+      if (requestId !== pulseRequestId.current) return
+
+      setPulsePoints(result)
+    } catch (loadError) {
+      if (requestId !== pulseRequestId.current) return
+
+      setPulseError(
+        getErrorMessage(
+          loadError,
+          'No pudimos cargar la evolución de este curso.',
+        ),
+      )
+    } finally {
+      if (requestId === pulseRequestId.current) {
+        setIsLoadingPulse(false)
+      }
     }
   }, [courseId])
 
   useEffect(() => {
     void loadCourse()
-  }, [loadCourse])
+    void loadPulse()
+  }, [loadCourse, loadPulse])
 
   if (isLoading) {
     return (
@@ -129,6 +189,15 @@ export function CourseDetailPage() {
         </div>
       </section>
 
+      <div className="mt-10">
+        <CoursePulseHistory
+          error={pulseError}
+          isLoading={isLoadingPulse}
+          onRetry={() => void loadPulse()}
+          points={pulsePoints}
+        />
+      </div>
+
       <section className="mt-9" aria-labelledby="course-classes-title">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -140,7 +209,14 @@ export function CourseDetailPage() {
             </h2>
           </div>
           {sessions.length > 0 && (
-            <Button className="min-h-10 px-3" onClick={() => void loadCourse()} variant="ghost">
+            <Button
+              className="min-h-10 px-3"
+              onClick={() => {
+                void loadCourse()
+                void loadPulse()
+              }}
+              variant="ghost"
+            >
               <RefreshCw className="size-4" aria-hidden="true" />
               Actualizar
             </Button>

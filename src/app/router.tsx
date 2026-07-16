@@ -13,6 +13,9 @@ const NotFoundPage = lazy(() =>
 const PrivacyPage = lazy(() =>
   import('../pages/PrivacyPage').then((module) => ({ default: module.PrivacyPage })),
 )
+const DemoPage = lazy(() =>
+  import('../pages/DemoPage').then((module) => ({ default: module.DemoPage })),
+)
 const DashboardPage = lazy(() =>
   import('../pages/professor/DashboardPage').then((module) => ({
     default: module.DashboardPage,
@@ -69,7 +72,20 @@ function RootProviders() {
   )
 }
 
+function PublicDemoRoute() {
+  return (
+    <Suspense fallback={<LoadingScreen label="Preparando la demo…" />}>
+      <DemoPage />
+    </Suspense>
+  )
+}
+
 const router = createBrowserRouter([
+  {
+    path: 'demo',
+    element: <PublicDemoRoute />,
+    errorElement: <RouteErrorPage />,
+  },
   {
     element: <RootProviders />,
     errorElement: <RouteErrorPage />,

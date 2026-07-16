@@ -19,9 +19,11 @@ Esta rebanada vertical incluye:
 - identificador anónimo persistente en `localStorage`;
 - una respuesta por identificador y sesión;
 - feed de respuestas y resumen porcentual en tiempo real;
+- pulso histórico por curso para comparar comprensión, participación y tendencia entre clases;
 - modo proyector con QR, código y pulso agregado, sin mostrar dudas individuales;
 - mapa de confusión bajo demanda con GPT‑5.6 y Structured Outputs;
 - historial de análisis, caché, tokens, duración, costo estimado y recomendaciones docentes;
+- demo pública guiada en `/demo`, con 20 estudiantes y resultados precargados, sin escrituras ni consumo de API;
 - validación en cliente con Zod y restricciones equivalentes en PostgreSQL;
 - migración con índices, privilegios explícitos y políticas RLS;
 - datos de demostración opcionales;
@@ -72,6 +74,7 @@ Las migraciones crean:
 - índices para sesiones del profesor y respuestas por sesión;
 - políticas RLS y privilegios separados para `authenticated` y `anon`;
 - la RPC pública y limitada `get_public_session`;
+- la RPC autenticada `get_course_pulse_history`, que entrega únicamente conteos agregados de cursos propios;
 - la publicación de `public.responses` en `supabase_realtime`;
 - `public.session_analyses`, con historial inmutable, caché de snapshots y lectura limitada al profesor propietario;
 - telemetría de tokens/costo y cuotas atómicas de análisis;
@@ -219,7 +222,7 @@ Comandos disponibles:
 
 ```bash
 npm run dev      # servidor de desarrollo
-npm test         # 19 pruebas unitarias
+npm test         # pruebas unitarias
 npm run build    # comprobación TypeScript y build de producción
 npm run preview  # vista local del build generado
 ```
@@ -229,6 +232,7 @@ npm run preview  # vista local del build generado
 | Ruta | Acceso | Función |
 | --- | --- | --- |
 | `/` | Público | Redirige al acceso estudiantil |
+| `/demo` | Público, sin cuenta | Recorrido guiado con una clase simulada y análisis precargado |
 | `/unirse` | Público, sin cuenta | Entrada mediante código de seis caracteres |
 | `/profesor/login` | Público | Inicio de sesión y registro opcional por correo |
 | `/profesor` | Profesor autenticado | Inicio y lista de cursos propios |
@@ -248,6 +252,7 @@ src/
 ├── app/          # proveedores y router
 ├── components/   # análisis, auth, layout, respuestas, sesiones y UI base
 ├── context/      # sesión de autenticación docente
+├── demo/         # escenario público autocontenido y datos simulados
 ├── hooks/        # identificador anónimo y suscripción Realtime
 ├── lib/          # entorno, errores, formato y utilidades
 ├── pages/        # pantallas de profesor y estudiante
@@ -279,8 +284,15 @@ Usa navegadores distintos o perfiles separados para que sus sesiones y `localSto
 11. Envía otra respuesta desde un perfil distinto: el mapa anterior se marca como desactualizado hasta que pulses **Actualizar mapa**.
 12. Intenta responder otra vez desde el mismo navegador B: debe mostrarse el límite de una respuesta por dispositivo y sesión.
 13. Finaliza la sesión desde el navegador A. Una carga nueva del enlace muestra la sesión cerrada y cualquier envío posterior queda bloqueado por la operación atómica del servidor.
+14. Regresa al curso y verifica que el pulso histórico compare las clases medidas sin exponer textos de dudas.
 
 Para simular varios estudiantes usa perfiles o navegadores independientes. Varias pestañas del mismo perfil comparten el identificador anónimo.
+
+## Demo pública para presentaciones
+
+Abre `/demo` para recorrer el producto sin iniciar sesión ni depender de servicios externos. El escenario contiene 20 señales simuladas de una primera clase de Cálculo Vectorial, un mapa de confusión precargado y cuatro mediciones históricas.
+
+La selección del visitante se procesa únicamente en memoria dentro de la pestaña: no consulta Supabase, no ejecuta Turnstile, no llama a OpenAI y no modifica cursos reales. Esto permite presentar ClassSignal con un costo de API de **US$0**.
 
 ## Datos de demostración opcionales
 
@@ -300,6 +312,7 @@ El seed asigna la demo al usuario Auth más antiguo y es repetible: los identifi
 - Las sesiones se autorizan con `professor_id = auth.uid()`; un profesor solo puede consultar, modificar o eliminar las propias.
 - La clave foránea `(course_id, professor_id)` garantiza en la base de datos que una sesión solo pueda pertenecer a un curso del mismo profesor.
 - Un profesor solo puede leer respuestas asociadas a sus propias sesiones.
+- El pulso histórico usa una RPC `SECURITY INVOKER`, filtra por `auth.uid()` y devuelve conteos agregados; no incluye dudas ni identificadores anónimos.
 - Un profesor solo puede leer análisis de sus propias sesiones; el navegador no tiene privilegios para insertar ni modificar resultados de IA.
 - La función limita análisis pagados a 12 por hora y 20 por cada ventana de 24 horas por profesor, con un tope global de 200 por ventana de 24 horas. La caché no consume cuota.
 - Los estudiantes permanecen sin autenticar y usan el rol `anon` mediante un cliente separado.

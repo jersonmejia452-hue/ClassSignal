@@ -32,6 +32,17 @@ export interface CourseDraft {
   description?: string | null
 }
 
+export interface CoursePulsePoint {
+  session_id: string
+  title: string
+  created_at: string
+  is_active: boolean
+  response_count: number
+  understood_count: number
+  question_count: number
+  lost_count: number
+}
+
 export interface PublicClassSession {
   id: string
   code: string

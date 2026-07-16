@@ -1,5 +1,12 @@
 import { useState, type FormEvent } from 'react'
-import { ArrowRight, KeyRound, LockKeyhole, RadioTower, ScanLine } from 'lucide-react'
+import {
+  ArrowRight,
+  KeyRound,
+  LockKeyhole,
+  PlayCircle,
+  RadioTower,
+  ScanLine,
+} from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { Alert } from '../../components/ui/Alert'
@@ -151,6 +158,24 @@ export function JoinSessionPage() {
             <strong>Tu participación es anónima.</strong> ClassSignal no pide nombre, correo ni registro estudiantil.
           </p>
         </div>
+
+        <Link
+          className="mt-4 flex min-h-14 items-center justify-between gap-3 rounded-2xl border border-teal-200 bg-teal-50/70 px-4 py-3 text-left text-sm font-extrabold text-[#071a2b] transition hover:border-teal-300 hover:bg-teal-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          to="/demo"
+        >
+          <span className="inline-flex items-center gap-3">
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#071a2b] text-[#66e2d1]">
+              <PlayCircle className="size-5" aria-hidden="true" />
+            </span>
+            <span>
+              ¿No tienes código?
+              <span className="mt-0.5 block text-xs font-semibold text-slate-600">
+                Explora la demo guiada con una clase simulada.
+              </span>
+            </span>
+          </span>
+          <ArrowRight className="size-4 shrink-0 text-blue-700" aria-hidden="true" />
+        </Link>
 
         <p className="mt-7 text-center text-sm text-slate-500">
           ¿Eres profesor?{' '}
