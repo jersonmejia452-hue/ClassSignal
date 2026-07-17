@@ -12,12 +12,39 @@ const booleanString = z.preprocess(
 
 const envSchema = z.object({
   VITE_SUPABASE_URL: z.string().url(),
-  VITE_SUPABASE_PUBLISHABLE_KEY: z.string().min(20),
+  VITE_SUPABASE_PUBLISHABLE_KEY: z
+    .string()
+    .min(20)
+    .refine((value) => value.trim().startsWith('sb_publishable_'), {
+      message: 'Use a Supabase publishable key',
+    }),
   VITE_PUBLIC_APP_URL: optionalUrl,
   VITE_PROFESSOR_SIGNUP_ENABLED: booleanString,
 })
 
-const result = envSchema.safeParse(import.meta.env)
+export function parsePublicEnvironment(
+  buildEnvironment: Record<string, unknown>,
+  runtimeEnvironment?: {
+    VITE_SUPABASE_URL?: unknown
+    VITE_SUPABASE_PUBLISHABLE_KEY?: unknown
+  },
+) {
+  const supabaseEnvironment = runtimeEnvironment ?? buildEnvironment
+
+  return envSchema.safeParse({
+    VITE_SUPABASE_URL: supabaseEnvironment.VITE_SUPABASE_URL,
+    VITE_SUPABASE_PUBLISHABLE_KEY:
+      supabaseEnvironment.VITE_SUPABASE_PUBLISHABLE_KEY,
+    VITE_PUBLIC_APP_URL: buildEnvironment.VITE_PUBLIC_APP_URL,
+    VITE_PROFESSOR_SIGNUP_ENABLED:
+      buildEnvironment.VITE_PROFESSOR_SIGNUP_ENABLED,
+  })
+}
+
+const runtimeEnvironment =
+  typeof window === 'undefined' ? undefined : window.__CLASS_SIGNAL_CONFIG__
+
+const result = parsePublicEnvironment(import.meta.env, runtimeEnvironment)
 
 export const env = result.success ? result.data : null
 

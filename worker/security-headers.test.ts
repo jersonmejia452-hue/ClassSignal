@@ -4,7 +4,9 @@ import { workerAssetsConfig } from '../build/worker-assets-config'
 import { appShellPath } from '../build/app-shell'
 import worker, {
   applySecurityHeaders,
+  createRuntimeConfigScript,
   createContentSecurityPolicy,
+  runtimeConfigPath,
 } from './index'
 
 const supabaseUrl = 'https://project-ref.supabase.co'
@@ -128,6 +130,149 @@ describe('security headers', () => {
       'text/html; charset=utf-8',
     )
     await expect(response.text()).resolves.toContain('ClassSignal')
+  })
+
+  it('serves an allowlisted, uncached runtime configuration before assets', async () => {
+    let assetRequests = 0
+    const env = {
+      ASSETS: {
+        async fetch() {
+          assetRequests += 1
+          return new Response('unexpected asset')
+        },
+      },
+      VITE_SUPABASE_URL: supabaseUrl,
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_public_key_for_tests',
+    }
+
+    const response = await worker.fetch(
+      new Request(`https://classsignal.example${runtimeConfigPath}`),
+      env,
+    )
+
+    expect(assetRequests).toBe(0)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe(
+      'no-store, max-age=0',
+    )
+    expect(response.headers.get('content-type')).toBe(
+      'application/javascript; charset=utf-8',
+    )
+    expectSecurityHeaders(response)
+    await expect(response.text()).resolves.toBe(
+      'globalThis.__CLASS_SIGNAL_CONFIG__=' +
+        JSON.stringify({
+          VITE_SUPABASE_URL: supabaseUrl,
+          VITE_SUPABASE_PUBLISHABLE_KEY:
+            'sb_publishable_public_key_for_tests',
+        }) +
+        ';',
+    )
+  })
+
+  it('escapes executable delimiters while preserving the public value', () => {
+    const script = createRuntimeConfigScript({
+      VITE_SUPABASE_URL: 'https://project-ref.supabase.co/<script>',
+      VITE_SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_public_key_for_tests',
+    })
+
+    expect(script).toContain('\\u003cscript>')
+    expect(script).not.toContain('<script>')
+  })
+
+  it('serializes only allowlisted bindings and refuses secret keys', async () => {
+    const secretSentinel = 'sb_secret_never_expose_this_value'
+    const response = await worker.fetch(
+      new Request(`https://classsignal.example${runtimeConfigPath}`),
+      {
+        ASSETS: {
+          async fetch() {
+            return new Response('unexpected asset')
+          },
+        },
+        VITE_SUPABASE_URL: supabaseUrl,
+        VITE_SUPABASE_PUBLISHABLE_KEY: secretSentinel,
+        OPENAI_API_KEY: 'private-openai-sentinel',
+        SUPABASE_SERVICE_ROLE_KEY: 'private-service-role-sentinel',
+      },
+    )
+    const body = await response.text()
+
+    expect(body).toContain(JSON.stringify(supabaseUrl))
+    expect(body).not.toContain(secretSentinel)
+    expect(body).not.toContain('OPENAI_API_KEY')
+    expect(body).not.toContain('private-openai-sentinel')
+    expect(body).not.toContain('SUPABASE_SERVICE_ROLE_KEY')
+    expect(body).not.toContain('private-service-role-sentinel')
+  })
+
+  it('uses the hosted Supabase URL for security headers', async () => {
+    const hostedUrl = 'https://hosted-project.supabase.co'
+    const response = await worker.fetch(
+      new Request('https://classsignal.example/asset.js'),
+      {
+        ASSETS: {
+          async fetch() {
+            return new Response('asset')
+          },
+        },
+        VITE_SUPABASE_URL: hostedUrl,
+        VITE_SUPABASE_PUBLISHABLE_KEY:
+          'sb_publishable_public_key_for_tests',
+      },
+    )
+    const policy = response.headers.get('content-security-policy')
+
+    expect(policy).toContain(
+      `connect-src 'self' ${hostedUrl} wss://hosted-project.supabase.co`,
+    )
+    expect(policy).not.toContain(supabaseUrl)
+  })
+
+  it('returns metadata without a body for runtime configuration HEAD requests', async () => {
+    const response = await worker.fetch(
+      new Request(`https://classsignal.example${runtimeConfigPath}`, {
+        method: 'HEAD',
+      }),
+      {
+        ASSETS: {
+          async fetch() {
+            return new Response('unexpected asset')
+          },
+        },
+        VITE_SUPABASE_URL: supabaseUrl,
+        VITE_SUPABASE_PUBLISHABLE_KEY:
+          'sb_publishable_public_key_for_tests',
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe(
+      'no-store, max-age=0',
+    )
+    await expect(response.text()).resolves.toBe('')
+  })
+
+  it('rejects writes to the runtime configuration endpoint', async () => {
+    const response = await worker.fetch(
+      new Request(`https://classsignal.example${runtimeConfigPath}`, {
+        method: 'POST',
+      }),
+      {
+        ASSETS: {
+          async fetch() {
+            return new Response('unexpected asset')
+          },
+        },
+        VITE_SUPABASE_URL: supabaseUrl,
+      },
+    )
+
+    expect(response.status).toBe(405)
+    expect(response.headers.get('allow')).toBe('GET, HEAD')
+    expect(response.headers.get('cache-control')).toBe(
+      'no-store, max-age=0',
+    )
   })
 
   it('protects a non-HTML 404 without rewriting it to the SPA shell', async () => {

@@ -147,6 +147,12 @@ TURNSTILE_EXPECTED_HOSTNAMES=localhost,127.0.0.1
 
 Las dos primeras variables son obligatorias para la aplicación. `VITE_PUBLIC_APP_URL` es opcional; define el origen que se incluirá en el enlace y el QR. Si se omite, la aplicación usa `window.location.origin`. El registro docente está oculto por defecto; actívalo solo durante onboarding y habilita también el registro en Supabase Auth.
 
+En Sites, guarda `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` como
+variables de producción del sitio. El worker las entrega al navegador mediante
+`/__classsignal-config.js` antes de iniciar la aplicación, sin caché y con una
+lista cerrada de campos públicos. La clave debe comenzar por `sb_publishable_`;
+el endpoint rechaza claves `sb_secret_` y nunca expone secretos del servidor.
+
 Si despliegas tu propia instancia, reemplaza también los dos orígenes de
 Supabase en la política CSP del worker; deben coincidir exactamente con
 `VITE_SUPABASE_URL` para mantener la CSP cerrada.
