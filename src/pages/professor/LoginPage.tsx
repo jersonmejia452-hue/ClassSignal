@@ -89,13 +89,22 @@ export function LoginPage() {
   return (
     <main className="min-h-screen bg-[#f4f7fb] lg:grid lg:grid-cols-[minmax(34rem,1.08fr)_minmax(28rem,0.92fr)]">
       <section className="relative hidden min-h-screen overflow-hidden bg-[#071a2b] text-white lg:flex lg:flex-col">
-        <img
-          alt="Docente usando ClassSignal con estudiantes universitarios durante una clase"
-          className="absolute inset-0 size-full object-cover object-center"
-          height="1400"
-          src="/brand/classsignal-login-hero.png"
-          width="1120"
-        />
+        <picture className="absolute inset-0 block size-full">
+          <source
+            media="(min-width: 1024px)"
+            srcSet="/brand/classsignal-login-hero.webp"
+            type="image/webp"
+          />
+          <img
+            alt="Docente usando ClassSignal con estudiantes universitarios durante una clase"
+            className="size-full object-cover object-center"
+            decoding="async"
+            fetchPriority="high"
+            height="1402"
+            src="/brand/classsignal-login-hero-mobile.webp"
+            width="1122"
+          />
+        </picture>
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(7,26,43,0.26)_0%,rgba(7,26,43,0.38)_34%,rgba(7,26,43,0.96)_100%)]" aria-hidden="true" />
         <div className="absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-[#071a2b]/70 to-transparent" aria-hidden="true" />
 
@@ -132,13 +141,22 @@ export function LoginPage() {
           <div className="mb-7 lg:hidden">
             <Brand to="/profesor/login" />
             <div className="relative mt-6 h-44 overflow-hidden rounded-[1.5rem] bg-[#071a2b] shadow-[0_18px_50px_rgba(7,26,43,0.18)]">
-              <img
-                alt=""
-                className="size-full object-cover object-[center_38%]"
-                height="360"
-                src="/brand/classsignal-login-hero.png"
-                width="720"
-              />
+              <picture className="block size-full">
+                <source
+                  media="(min-width: 1024px)"
+                  srcSet="/brand/classsignal-login-hero.webp"
+                  type="image/webp"
+                />
+                <img
+                  alt=""
+                  className="size-full object-cover object-center"
+                  decoding="async"
+                  fetchPriority="high"
+                  height="448"
+                  src="/brand/classsignal-login-hero-mobile.webp"
+                  width="896"
+                />
+              </picture>
               <div className="absolute inset-0 bg-gradient-to-t from-[#071a2b]/85 via-transparent to-transparent" aria-hidden="true" />
               <p className="absolute right-5 bottom-4 left-5 text-lg leading-6 font-black tracking-tight text-white">
                 La señal de toda tu clase, en un solo lugar.

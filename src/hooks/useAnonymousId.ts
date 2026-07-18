@@ -1,25 +1,20 @@
 import { useState } from 'react'
 
-const anonymousIdKey = 'aula-clara:anonymous-id:v1'
+import { getOrCreateAnonymousId } from '../lib/storageMigration'
 
 function createAnonymousId() {
   return crypto.randomUUID()
 }
 
-function getOrCreateAnonymousId() {
+function resolveAnonymousId() {
   try {
-    const storedId = window.localStorage.getItem(anonymousIdKey)
-    if (storedId) return storedId
-
-    const nextId = createAnonymousId()
-    window.localStorage.setItem(anonymousIdKey, nextId)
-    return nextId
+    return getOrCreateAnonymousId(window.localStorage, createAnonymousId)
   } catch {
     return createAnonymousId()
   }
 }
 
 export function useAnonymousId() {
-  const [anonymousId] = useState(getOrCreateAnonymousId)
+  const [anonymousId] = useState(resolveAnonymousId)
   return anonymousId
 }

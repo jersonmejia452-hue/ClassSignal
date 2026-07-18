@@ -1,17 +1,33 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 import { env } from '../lib/env'
+import {
+  classSignalStorageKeys,
+  migrateTeacherAuthStorage,
+} from '../lib/storageMigration'
 
 let teacherClient: SupabaseClient | null = null
 let publicClient: SupabaseClient | null = null
 
+function resolveTeacherAuthStorageKey() {
+  if (typeof window === 'undefined') return classSignalStorageKeys.teacherAuth
+
+  try {
+    return migrateTeacherAuthStorage(window.localStorage)
+  } catch {
+    return classSignalStorageKeys.teacherAuth
+  }
+}
+
 if (env) {
+  const teacherAuthStorageKey = resolveTeacherAuthStorageKey()
+
   teacherClient = createClient(
     env.VITE_SUPABASE_URL,
     env.VITE_SUPABASE_PUBLISHABLE_KEY,
     {
       auth: {
-        storageKey: 'aula-clara:teacher-auth:v1',
+        storageKey: teacherAuthStorageKey,
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
@@ -24,7 +40,7 @@ if (env) {
     env.VITE_SUPABASE_PUBLISHABLE_KEY,
     {
       auth: {
-        storageKey: 'aula-clara:public-auth:v1',
+        storageKey: classSignalStorageKeys.publicAuth,
         persistSession: false,
         autoRefreshToken: false,
         detectSessionInUrl: false,
