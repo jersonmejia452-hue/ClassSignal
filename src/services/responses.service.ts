@@ -33,6 +33,21 @@ export async function getSessionResponses(sessionId: string) {
   return (data ?? []) as StudentResponse[]
 }
 
+export async function setResponseStudentVisibility(
+  responseId: string,
+  isVisibleToStudents: boolean,
+) {
+  const { data, error } = await getTeacherSupabase()
+    .from('responses')
+    .update({ is_visible_to_students: isVisibleToStudents })
+    .eq('id', responseId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data as StudentResponse
+}
+
 async function parsePublicFunctionError(
   error: unknown,
   fallbackMessage: string,

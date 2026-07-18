@@ -19,6 +19,7 @@ Esta rebanada vertical incluye:
 - identificador anónimo persistente en `localStorage`;
 - una respuesta por identificador y sesión;
 - feed de respuestas y resumen porcentual en tiempo real;
+- muro anónimo de dudas para estudiantes, activado por el profesor, con actualización automática y moderación individual;
 - pulso histórico por curso para comparar comprensión, participación y tendencia entre clases;
 - modo proyector con QR, código y pulso agregado, sin mostrar dudas individuales;
 - mapa de confusión bajo demanda con GPT‑5.6 y Structured Outputs;
@@ -74,6 +75,7 @@ Las migraciones crean:
 - índices para sesiones del profesor y respuestas por sesión;
 - políticas RLS y privilegios separados para `authenticated` y `anon`;
 - la RPC pública y limitada `get_public_session`;
+- la RPC pública y acotada `get_student_question_wall`, que entrega solo las dudas no excluidas mientras la sesión está activa y el profesor habilita el muro;
 - la RPC autenticada `get_course_pulse_history`, que entrega únicamente conteos agregados de cursos propios;
 - la publicación de `public.responses` en `supabase_realtime`;
 - `public.session_analyses`, con historial inmutable, caché de snapshots y lectura limitada al profesor propietario;
@@ -97,7 +99,7 @@ La configuración local usa los puertos `55321` (API), `55322` (Postgres), `5532
 
 La migración añade automáticamente `public.responses` a la publicación `supabase_realtime`. No debería hacer falta activarla manualmente. Si el panel docente permanece en “Conectando”, verifica en el Dashboard que la tabla `responses` pertenezca a esa publicación y que la migración haya terminado sin errores.
 
-El cliente docente escucha únicamente eventos `INSERT` de la sesión abierta y realiza además una consulta inicial, por lo que muestra tanto las respuestas existentes como las nuevas.
+El cliente docente escucha únicamente eventos `INSERT` de la sesión abierta y realiza además una consulta inicial, por lo que muestra tanto las respuestas existentes como las nuevas. El muro estudiantil no abre Realtime sobre la tabla base: consulta una proyección pública mínima cada 15 segundos y permite actualizarla manualmente.
 
 ## 3. Configurar autenticación por correo
 
@@ -246,9 +248,9 @@ npm run preview  # vista local del build generado
 | `/profesor/curso/:courseId` | Profesor propietario | Detalle del curso y sus clases |
 | `/profesor/curso/:courseId/sesion/nueva` | Profesor propietario | Creación de una clase dentro del curso |
 | `/profesor/sesiones/nueva` | Profesor autenticado | Ruta compatible para crear una sesión sin curso |
-| `/profesor/sesion/:id` | Profesor propietario | QR, código, estado, resumen y respuestas en vivo |
+| `/profesor/sesion/:id` | Profesor propietario | QR, código, estado, resumen, respuestas en vivo y control del muro de dudas |
 | `/profesor/sesion/:id/presentar` | Profesor propietario | QR, código y pulso agregado para proyectar |
-| `/s/:codigo` | Público, sin cuenta | Respuesta anónima del estudiante |
+| `/s/:codigo` | Público, sin cuenta | Respuesta anónima y muro de dudas compartidas de la clase |
 | `/privacidad` | Público | Aviso técnico de privacidad y proveedores del MVP |
 
 ## Estructura del proyecto
@@ -256,10 +258,10 @@ npm run preview  # vista local del build generado
 ```text
 src/
 ├── app/          # proveedores y router
-├── components/   # análisis, auth, layout, respuestas, sesiones y UI base
+├── components/   # análisis, auth, layout, preguntas, respuestas, sesiones y UI base
 ├── context/      # sesión de autenticación docente
 ├── demo/         # escenario público autocontenido y datos simulados
-├── hooks/        # identificador anónimo y suscripción Realtime
+├── hooks/        # identificador anónimo, polling público y suscripción Realtime
 ├── lib/          # entorno, errores, formato y utilidades
 ├── pages/        # pantallas de profesor y estudiante
 ├── schemas/      # validaciones Zod
@@ -323,6 +325,8 @@ El seed asigna la demo al usuario Auth más antiguo y es repetible: los identifi
 - La función limita análisis pagados a 12 por hora y 20 por cada ventana de 24 horas por profesor, con un tope global de 200 por ventana de 24 horas. La caché no consume cuota.
 - Los estudiantes permanecen sin autenticar y usan el rol `anon` mediante un cliente separado.
 - `anon` no tiene lectura directa de las tablas. La RPC `get_public_session` devuelve solamente los campos mínimos para la pantalla pública.
+- El muro de dudas comienza oculto. Su RPC devuelve únicamente `id` y texto de preguntas no excluidas cuando la sesión sigue activa; nunca expone `anonymous_id`, estado de comprensión, hora de envío ni `session_id`.
+- El profesor propietario puede activar u ocultar el muro y moderar cada duda. El estudiante nunca se suscribe directamente a filas de `responses`.
 - `anon` no puede insertar directamente en `responses` ni ejecutar la RPC privilegiada. La Edge Function pública valida, limita y ejecuta una RPC exclusiva de `service_role`.
 - Cada envío exige un token Turnstile nuevo verificado en servidor; se comprueban la acción, la sesión ligada mediante `cData` y un hostname de la lista obligatoria.
 - El código corto sirve para encontrar una sesión; no es la frontera de autorización. Esa frontera está en los privilegios y políticas RLS de PostgreSQL.
@@ -403,5 +407,6 @@ Crea primero un usuario mediante Supabase Auth. Si hay varios, la sesión perten
 3. Proyecta el QR y el código corto.
 4. Un estudiante responde desde su teléfono sin registrarse.
 5. El panel cambia en vivo y muestra la duda junto al nuevo porcentaje.
-6. El profesor pulsa **Analizar sesión** y obtiene un mapa de confusión con evidencia y acciones sugeridas.
-7. El profesor finaliza la sesión y se bloquean nuevas respuestas.
+6. El profesor activa **Compartir dudas** y el estudiante ve el muro anónimo desde el mismo enlace; una duda moderada desaparece en la siguiente actualización.
+7. El profesor pulsa **Analizar sesión** y obtiene un mapa de confusión con evidencia y acciones sugeridas.
+8. El profesor finaliza la sesión: se bloquean nuevas respuestas y la RPC pública deja de mostrar el muro.

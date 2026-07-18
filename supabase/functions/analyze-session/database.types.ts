@@ -47,6 +47,7 @@ export type Database = {
           anonymous_id: string;
           created_at: string;
           id: string;
+          is_visible_to_students: boolean;
           question_text: string | null;
           session_id: string;
           status: string;
@@ -55,6 +56,7 @@ export type Database = {
           anonymous_id: string;
           created_at?: string;
           id?: string;
+          is_visible_to_students?: boolean;
           question_text?: string | null;
           session_id: string;
           status: string;
@@ -63,6 +65,7 @@ export type Database = {
           anonymous_id?: string;
           created_at?: string;
           id?: string;
+          is_visible_to_students?: boolean;
           question_text?: string | null;
           session_id?: string;
           status?: string;
@@ -168,6 +171,7 @@ export type Database = {
           id: string;
           is_active: boolean;
           professor_id: string;
+          questions_visible_to_students: boolean;
           subject: string;
           title: string;
           topic: string;
@@ -181,6 +185,7 @@ export type Database = {
           id?: string;
           is_active?: boolean;
           professor_id?: string;
+          questions_visible_to_students?: boolean;
           subject: string;
           title: string;
           topic: string;
@@ -194,6 +199,7 @@ export type Database = {
           id?: string;
           is_active?: boolean;
           professor_id?: string;
+          questions_visible_to_students?: boolean;
           subject?: string;
           title?: string;
           topic?: string;
@@ -263,6 +269,10 @@ export type Database = {
           title: string;
           topic: string;
         };
+      };
+      get_student_question_wall: {
+        Args: { p_limit?: number; p_session_id: string };
+        Returns: Json;
       };
       submit_student_response_server: {
         Args: {

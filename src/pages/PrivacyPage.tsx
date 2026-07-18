@@ -52,7 +52,7 @@ export function PrivacyPage() {
             correo ni una cuenta. Este aviso describe el tratamiento de datos del MVP publicado.
           </p>
           <p className="mt-3 text-sm font-semibold text-slate-500">
-            Última actualización: 15 de julio de 2026
+            Última actualización: 17 de julio de 2026
           </p>
         </div>
 
@@ -70,6 +70,12 @@ export function PrivacyPage() {
               <li>
                 No escribas nombres ni otros datos personales en la duda. El profesor puede leer el
                 texto exactamente como fue enviado.
+              </li>
+              <li>
+                Si el profesor activa el muro de dudas, el texto puede mostrarse de forma anónima a
+                quienes tengan el enlace de la clase mientras la sesión siga activa. El muro no
+                publica tu identificador ni tu estado de comprensión, y el profesor puede ocultar
+                preguntas individuales.
               </li>
             </ul>
           </PrivacySection>

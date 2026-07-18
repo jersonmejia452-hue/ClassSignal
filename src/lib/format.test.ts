@@ -14,6 +14,7 @@ function response(status: UnderstandingStatus, index: number): StudentResponse {
     anonymous_id: `anonymous-${index}`,
     status,
     question_text: null,
+    is_visible_to_students: false,
     created_at: '2026-07-15T00:00:00.000Z',
   }
 }

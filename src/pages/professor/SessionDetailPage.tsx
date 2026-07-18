@@ -3,6 +3,7 @@ import { ArrowLeft, PauseCircle, PlayCircle, Radio, RefreshCw } from 'lucide-rea
 import { Link, useLocation, useParams } from 'react-router-dom'
 
 import { ConfusionMapPanel } from '../../components/analysis/ConfusionMapPanel'
+import { StudentQuestionWallControl } from '../../components/questions/StudentQuestionWallControl'
 import { ResponseFeed } from '../../components/responses/ResponseFeed'
 import { ResponseSummary } from '../../components/responses/ResponseSummary'
 import { ShareSessionCard } from '../../components/sessions/ShareSessionCard'
@@ -18,7 +19,9 @@ import { formatDateTime } from '../../lib/format'
 import {
   getSessionById,
   setSessionActive,
+  setSessionQuestionsVisible,
 } from '../../services/sessions.service'
+import { setResponseStudentVisibility } from '../../services/responses.service'
 import {
   analysisResponseLimit,
   type ClassSession,
@@ -37,6 +40,10 @@ export function SessionDetailPage() {
   const [sessionError, setSessionError] = useState<string | null>(null)
   const [toggleError, setToggleError] = useState<string | null>(null)
   const [isToggling, setIsToggling] = useState(false)
+  const [questionWallError, setQuestionWallError] = useState<string | null>(null)
+  const [isTogglingQuestionWall, setIsTogglingQuestionWall] = useState(false)
+  const [responseVisibilityError, setResponseVisibilityError] = useState<string | null>(null)
+  const [updatingResponseId, setUpdatingResponseId] = useState<string | null>(null)
 
   const {
     responses,
@@ -104,6 +111,45 @@ export function SessionDetailPage() {
       )
     } finally {
       setIsToggling(false)
+    }
+  }
+
+  const toggleQuestionWall = async () => {
+    if (!session?.is_active) return
+
+    setIsTogglingQuestionWall(true)
+    setQuestionWallError(null)
+
+    try {
+      setSession(await setSessionQuestionsVisible(
+        session.id,
+        !session.questions_visible_to_students,
+      ))
+    } catch (error) {
+      setQuestionWallError(
+        getErrorMessage(error, 'No pudimos cambiar la visibilidad de las dudas.'),
+      )
+    } finally {
+      setIsTogglingQuestionWall(false)
+    }
+  }
+
+  const updateResponseVisibility = async (
+    responseId: string,
+    isVisibleToStudents: boolean,
+  ) => {
+    setUpdatingResponseId(responseId)
+    setResponseVisibilityError(null)
+
+    try {
+      await setResponseStudentVisibility(responseId, isVisibleToStudents)
+      await refresh()
+    } catch (error) {
+      setResponseVisibilityError(
+        getErrorMessage(error, 'No pudimos cambiar la visibilidad de esta duda.'),
+      )
+    } finally {
+      setUpdatingResponseId(null)
     }
   }
 
@@ -176,6 +222,7 @@ export function SessionDetailPage() {
 
         <Button
           className="shrink-0"
+          disabled={isTogglingQuestionWall}
           isLoading={isToggling}
           onClick={toggleSession}
           variant={session.is_active ? 'danger' : 'secondary'}
@@ -198,6 +245,18 @@ export function SessionDetailPage() {
 
       <div className="mt-8">
         <ShareSessionCard session={session} />
+      </div>
+
+      <div className="mt-5">
+        <StudentQuestionWallControl
+          error={questionWallError}
+          isActive={session.is_active}
+          isUpdating={isTogglingQuestionWall || isToggling}
+          isVisible={session.questions_visible_to_students}
+          onToggle={toggleQuestionWall}
+          responses={responses}
+          sessionCode={session.code}
+        />
       </div>
 
       <div className="mt-10">
@@ -241,6 +300,9 @@ export function SessionDetailPage() {
         </div>
 
         {responsesError && <Alert className="mb-4" tone="error">{responsesError}</Alert>}
+        {responseVisibilityError && (
+          <Alert className="mb-4" tone="error">{responseVisibilityError}</Alert>
+        )}
 
         {isLoadingResponses && responses.length === 0 ? (
           <div className="space-y-3" aria-label="Cargando respuestas" role="status">
@@ -249,7 +311,12 @@ export function SessionDetailPage() {
             ))}
           </div>
         ) : (
-          <ResponseFeed responses={responses} />
+          <ResponseFeed
+            isStudentVisibilityDisabled={!session.is_active}
+            onStudentVisibilityChange={updateResponseVisibility}
+            responses={responses}
+            updatingResponseId={updatingResponseId}
+          />
         )}
       </section>
     </div>

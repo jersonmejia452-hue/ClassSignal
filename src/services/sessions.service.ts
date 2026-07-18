@@ -90,6 +90,21 @@ export async function setSessionActive(sessionId: string, isActive: boolean) {
   return data as ClassSession
 }
 
+export async function setSessionQuestionsVisible(
+  sessionId: string,
+  questionsVisibleToStudents: boolean,
+) {
+  const { data, error } = await getTeacherSupabase()
+    .from('sessions')
+    .update({ questions_visible_to_students: questionsVisibleToStudents })
+    .eq('id', sessionId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data as ClassSession
+}
+
 export async function getPublicSession(code: string) {
   const normalizedCode = code.trim().toUpperCase()
   const { data, error } = await getPublicSupabase()

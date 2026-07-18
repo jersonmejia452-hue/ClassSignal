@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ArrowRight, CheckCircle2, Clock3, LockKeyhole, MessageSquareText } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 
+import { PublicQuestionWall } from '../../components/questions/PublicQuestionWall'
 import { StatusSelector } from '../../components/responses/StatusSelector'
 import {
   InvisibleTurnstile,
@@ -11,6 +12,7 @@ import { Alert } from '../../components/ui/Alert'
 import { Brand } from '../../components/ui/Brand'
 import { Button } from '../../components/ui/Button'
 import { useAnonymousId } from '../../hooks/useAnonymousId'
+import { usePublicQuestionWall } from '../../hooks/usePublicQuestionWall'
 import { getErrorCode, getErrorMessage } from '../../lib/errors'
 import { statusContent } from '../../lib/format'
 import { responseSchema } from '../../schemas/response'
@@ -49,6 +51,7 @@ export function StudentSessionPage() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
+  const questionWall = usePublicQuestionWall(session?.id)
 
   useEffect(() => {
     let isMounted = true
@@ -154,6 +157,7 @@ export function StudentSessionPage() {
       }, turnstileToken)
       setSubmittedStatus(result.data.status)
       setIsSubmitted(true)
+      void questionWall.refresh()
     } catch (error) {
       const errorCode = getErrorCode(error)
 
@@ -240,6 +244,7 @@ export function StudentSessionPage() {
           <LockKeyhole className="mt-0.5 size-5 shrink-0 text-blue-700" aria-hidden="true" />
           <p>
             <strong>Tu respuesta es anónima.</strong> No pedimos tu nombre, correo ni una cuenta.
+            {' '}Tu profesor puede compartir el texto de tu duda de forma anónima con el grupo.
           </p>
         </div>
 
@@ -263,7 +268,9 @@ export function StudentSessionPage() {
             <p className="mt-3 leading-7 text-slate-600">
               Tu profesor ya puede ver la señal <strong>{submittedStatus ? statusContent[submittedStatus].label.toLowerCase() : ''}</strong>, sin saber quién la envió.
             </p>
-            <p className="mt-5 text-sm font-semibold text-slate-500">Ya puedes cerrar esta página.</p>
+            <p className="mt-5 text-sm font-semibold text-slate-500">
+              Tu señal quedó registrada. Revisa abajo las dudas anónimas de tu clase.
+            </p>
           </section>
         ) : (
           <form className="mt-7 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-[0_14px_45px_rgba(7,26,43,0.07)] sm:p-7" noValidate onSubmit={handleSubmit}>
@@ -282,7 +289,8 @@ export function StudentSessionPage() {
                 <span className="text-xs font-semibold text-slate-400">{questionText.length}/1000</span>
               </div>
               <p className="mt-1 text-sm leading-6 text-slate-500">
-                No necesitas formularla perfectamente. Escribe lo que te está costando.
+                No necesitas formularla perfectamente. Escribe lo que te está costando. Si el profesor
+                activa el muro, podrá compartirla de forma anónima con el grupo.
               </p>
               <textarea
                 aria-describedby={errors.questionText ? 'questionText-error' : undefined}
@@ -358,6 +366,16 @@ export function StudentSessionPage() {
             </div>
           </form>
         )}
+
+        <PublicQuestionWall
+          error={questionWall.error}
+          hasLoaded={questionWall.hasLoaded}
+          isInitialLoading={questionWall.isInitialLoading}
+          isRefreshing={questionWall.isRefreshing}
+          isVisible={questionWall.isVisible}
+          onRefresh={questionWall.refresh}
+          questions={questionWall.questions}
+        />
       </div>
     </main>
   )

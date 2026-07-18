@@ -28,6 +28,7 @@ export const DEMO_SESSION: ClassSession = {
   topic:
     'Vectores, magnitud, dirección, componentes y una primera aproximación al producto punto.',
   is_active: true,
+  questions_visible_to_students: true,
   created_at: '2026-06-23T16:00:00.000Z',
   updated_at: '2026-06-23T16:00:00.000Z',
   ended_at: null,
@@ -178,6 +179,7 @@ export function createDemoResponses({
       anonymous_id: '10000000-0000-4000-8000-000000000120',
       status,
       question_text: normalizedQuestion,
+      is_visible_to_students: Boolean(normalizedQuestion),
       created_at: createdAt,
     },
     ...DEMO_BASE_RESPONSES,
@@ -328,6 +330,7 @@ function demoResponse(
     anonymous_id: `10000000-0000-4000-8000-000000000${suffix}`,
     status,
     question_text: questionText,
+    is_visible_to_students: Boolean(questionText),
     created_at: createdAt,
   }
 }

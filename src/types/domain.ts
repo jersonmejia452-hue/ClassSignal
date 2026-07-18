@@ -11,6 +11,7 @@ export interface ClassSession {
   subject: string
   topic: string
   is_active: boolean
+  questions_visible_to_students: boolean
   created_at: string
   updated_at: string
   ended_at: string | null
@@ -58,7 +59,18 @@ export interface StudentResponse {
   anonymous_id: string
   status: UnderstandingStatus
   question_text: string | null
+  is_visible_to_students: boolean
   created_at: string
+}
+
+export interface PublicSessionQuestion {
+  id: string
+  question_text: string
+}
+
+export interface QuestionWallPayload {
+  visible: boolean
+  questions: PublicSessionQuestion[]
 }
 
 export interface SessionDraft {
