@@ -33,13 +33,40 @@ interface FormErrors {
   questionText?: string
 }
 
+const publicSessionPollingIntervalMs = 5_000
+const pulseSubmissionStoragePrefix = 'classsignal:pulse-submitted:v1:'
+
+function hasSubmittedPulse(pulseId: string) {
+  try {
+    return window.localStorage.getItem(
+      `${pulseSubmissionStoragePrefix}${pulseId}`,
+    ) === '1'
+  } catch {
+    return false
+  }
+}
+
+function rememberSubmittedPulse(pulseId: string) {
+  try {
+    window.localStorage.setItem(`${pulseSubmissionStoragePrefix}${pulseId}`, '1')
+  } catch {
+    // The in-memory confirmation still works when storage is unavailable.
+  }
+}
+
 export function StudentSessionPage() {
   const { code = '' } = useParams<{ code: string }>()
   const anonymousId = useAnonymousId()
   const turnstileRef = useRef<InvisibleTurnstileHandle>(null)
+  const refreshSessionRef = useRef<() => Promise<void>>(async () => undefined)
+  const observedSessionIdRef = useRef<string | null>(null)
+  const observedPulseIdRef = useRef<string | null>(null)
+  const observedSessionActiveRef = useRef<boolean | null>(null)
+  const activePulseIdRef = useRef<string | null>(null)
   const [session, setSession] = useState<PublicClassSession | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
   const [submissionSecurity, setSubmissionSecurity] = useState<ResponseSubmissionSecurity | null>(null)
   const [isSecurityLoading, setIsSecurityLoading] = useState(true)
   const [securityError, setSecurityError] = useState<string | null>(null)
@@ -51,45 +78,184 @@ export function StudentSessionPage() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
-  const questionWall = usePublicQuestionWall(session?.id)
+  const [pulseAnnouncement, setPulseAnnouncement] = useState('')
+  const questionWall = usePublicQuestionWall(
+    session?.id,
+    session?.active_pulse_id ?? undefined,
+  )
 
   useEffect(() => {
     let isMounted = true
+    let isRequestInFlight = false
+    let hasCompletedInitialLoad = false
 
-    const loadSession = async () => {
-      setSession(null)
+    setSession(null)
+    setStatus(null)
+    setQuestionText('')
+    setSubmittedStatus(null)
+    setErrors({})
+    setSubmitError(null)
+    setIsSubmitting(false)
+    setIsSubmitted(false)
+    setPulseAnnouncement('')
+    setIsLoading(true)
+    setLoadError(null)
+    setRefreshError(null)
+    setSubmissionSecurity(null)
+    setIsSecurityLoading(true)
+    setSecurityError(null)
+    setTurnstileStatus('loading')
+    observedSessionIdRef.current = null
+    observedPulseIdRef.current = null
+    observedSessionActiveRef.current = null
+    activePulseIdRef.current = null
+
+    const refreshSession = async () => {
+      if (isRequestInFlight) return
+      isRequestInFlight = true
+
+      try {
+        const publicSession = await getPublicSession(code)
+        if (!isMounted) return
+
+        setSession(publicSession)
+        setLoadError(null)
+        setRefreshError(null)
+      } catch (error) {
+        if (!isMounted) return
+
+        const message = getErrorMessage(error, 'No pudimos abrir esta clase.')
+        if (hasCompletedInitialLoad) {
+          setRefreshError(
+            'No pudimos comprobar si hay un pulso nuevo. Conservamos la última información disponible.',
+          )
+        } else {
+          setLoadError(message)
+        }
+      } finally {
+        if (isMounted && !hasCompletedInitialLoad) {
+          hasCompletedInitialLoad = true
+          setIsLoading(false)
+        }
+        isRequestInFlight = false
+      }
+    }
+
+    refreshSessionRef.current = refreshSession
+    void refreshSession()
+
+    const intervalId = window.setInterval(() => {
+      void refreshSession()
+    }, publicSessionPollingIntervalMs)
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void refreshSession()
+    }
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+
+    return () => {
+      isMounted = false
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+      refreshSessionRef.current = async () => undefined
+    }
+  }, [code])
+
+  useEffect(() => {
+    if (!session) {
+      activePulseIdRef.current = null
+      return
+    }
+
+    const nextPulseId = session.active_pulse_id
+    const previousSessionId = observedSessionIdRef.current
+    const previousPulseId = observedPulseIdRef.current
+    const previousSessionActive = observedSessionActiveRef.current
+    const isNewSession = previousSessionId !== session.id
+    const pulseChanged = !isNewSession && previousPulseId !== nextPulseId
+    const sessionStateChanged = !isNewSession
+      && previousSessionActive !== session.is_active
+
+    activePulseIdRef.current = nextPulseId
+
+    if (isNewSession || pulseChanged || sessionStateChanged) {
       setStatus(null)
       setQuestionText('')
       setSubmittedStatus(null)
       setErrors({})
       setSubmitError(null)
-      setIsSubmitted(false)
-      setIsLoading(true)
-      setLoadError(null)
-      setSubmissionSecurity(null)
-      setIsSecurityLoading(true)
-      setSecurityError(null)
+      setIsSubmitting(false)
       setTurnstileStatus('loading')
 
-      let publicSession: PublicClassSession | null = null
-      try {
-        publicSession = await getPublicSession(code)
-        if (isMounted) setSession(publicSession)
-      } catch (error) {
-        if (isMounted) {
-          setLoadError(
-            getErrorMessage(error, 'No pudimos abrir esta clase.'),
-          )
-        }
-      } finally {
-        if (isMounted) setIsLoading(false)
-      }
+      const wasAlreadySubmitted = nextPulseId
+        ? hasSubmittedPulse(nextPulseId)
+        : false
+      setIsSubmitted(wasAlreadySubmitted)
 
-      if (!publicSession?.is_active) {
-        if (isMounted) setIsSecurityLoading(false)
-        return
+      if (isNewSession) {
+        setPulseAnnouncement('')
+      } else if (sessionStateChanged && !session.is_active) {
+        setPulseAnnouncement(
+          'La clase se cerró y dejó de recibir respuestas.',
+        )
+      } else if (pulseChanged && nextPulseId) {
+        const pulseLabel = session.active_pulse_ordinal
+          ? ` ${session.active_pulse_ordinal}`
+          : ''
+        setPulseAnnouncement(
+          wasAlreadySubmitted
+            ? `El pulso${pulseLabel} está disponible y tu respuesta ya está registrada.`
+            : `Nuevo pulso${pulseLabel} disponible. Ya puedes responder.`,
+        )
+      } else if (pulseChanged) {
+        setPulseAnnouncement(
+          'El pulso anterior terminó. Espera a que el profesor abra el siguiente.',
+        )
+      } else if (sessionStateChanged) {
+        setPulseAnnouncement(
+          !nextPulseId
+            ? 'La clase volvió a abrirse. Espera a que el profesor abra el siguiente pulso.'
+            : wasAlreadySubmitted
+              ? 'La clase volvió a abrirse. Tu respuesta para este pulso ya está registrada.'
+              : 'La clase volvió a abrirse. Ya puedes responder el pulso actual.',
+        )
       }
+    }
 
+    observedSessionIdRef.current = session.id
+    observedPulseIdRef.current = nextPulseId
+    observedSessionActiveRef.current = session.is_active
+  }, [
+    session?.active_pulse_id,
+    session?.active_pulse_ordinal,
+    session?.id,
+    session?.is_active,
+  ])
+
+  useEffect(() => {
+    let isMounted = true
+    const pulseId = session?.active_pulse_id
+
+    if (!session?.is_active || !pulseId) {
+      setIsSecurityLoading(false)
+      setTurnstileStatus('loading')
+      return () => {
+        isMounted = false
+      }
+    }
+
+    setTurnstileStatus('loading')
+    if (submissionSecurity) {
+      setIsSecurityLoading(false)
+      return () => {
+        isMounted = false
+      }
+    }
+
+    setIsSecurityLoading(true)
+    setSecurityError(null)
+
+    const loadSecurity = async () => {
       try {
         const security = await getResponseSubmissionSecurity()
         if (isMounted) setSubmissionSecurity(security)
@@ -108,12 +274,16 @@ export function StudentSessionPage() {
       }
     }
 
-    void loadSession()
+    void loadSecurity()
 
     return () => {
       isMounted = false
     }
-  }, [code])
+  }, [
+    session?.active_pulse_id,
+    session?.is_active,
+    submissionSecurity,
+  ])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -133,7 +303,21 @@ export function StudentSessionPage() {
       return
     }
 
-    if (!session) return
+    if (!session?.is_active) {
+      setSubmitError('La clase ya no está recibiendo respuestas.')
+      void refreshSessionRef.current()
+      return
+    }
+
+    const pulseId = session.active_pulse_id
+    if (!pulseId) {
+      setSubmitError(
+        'Este pulso ya terminó. Espera a que el profesor abra el siguiente.',
+      )
+      void refreshSessionRef.current()
+      return
+    }
+
     if (
       !submissionSecurity
       || !turnstileRef.current
@@ -151,25 +335,53 @@ export function StudentSessionPage() {
       const turnstileToken = await turnstileRef.current.execute()
       await submitStudentResponse({
         sessionId: session.id,
+        pulseId,
         anonymousId,
         status: result.data.status,
         questionText: result.data.questionText,
       }, turnstileToken)
-      setSubmittedStatus(result.data.status)
-      setIsSubmitted(true)
-      void questionWall.refresh()
+      rememberSubmittedPulse(pulseId)
+
+      if (activePulseIdRef.current === pulseId) {
+        setSubmittedStatus(result.data.status)
+        setIsSubmitted(true)
+        setPulseAnnouncement('')
+        void questionWall.refresh()
+      }
     } catch (error) {
       const errorCode = getErrorCode(error)
 
       if (errorCode === 'duplicate_response') {
-        setSubmitError('Ya enviaste una respuesta desde este dispositivo para esta clase.')
+        rememberSubmittedPulse(pulseId)
+        if (activePulseIdRef.current === pulseId) {
+          setSubmittedStatus(null)
+          setIsSubmitted(true)
+          setPulseAnnouncement(
+            'Tu respuesta para este pulso ya estaba registrada.',
+          )
+          void questionWall.refresh()
+        }
       } else if (errorCode === 'session_inactive') {
         setSubmitError('La clase ya no está recibiendo respuestas.')
         setSession((current) => (current ? { ...current, is_active: false } : current))
+        void refreshSessionRef.current()
+      } else if (
+        errorCode === 'pulse_inactive'
+        || errorCode === 'pulse_not_active'
+        || errorCode === 'pulse_closed'
+        || errorCode === 'no_active_pulse'
+      ) {
+        setSubmitError(
+          'Este pulso ya terminó. Espera a que el profesor abra el siguiente.',
+        )
+        void refreshSessionRef.current()
       } else if (errorCode === 'response_rate_limit') {
         setSubmitError('Se recibieron demasiados envíos desde esta red. Espera unos minutos.')
-      } else if (errorCode === 'session_response_limit') {
-        setSubmitError('La clase alcanzó su capacidad máxima de respuestas.')
+      } else if (
+        errorCode === 'pulse_response_limit'
+        || errorCode === 'session_response_limit'
+      ) {
+        setSubmitError('Este pulso alcanzó su capacidad máxima de respuestas.')
       } else if (errorCode === 'verification_failed') {
         setSubmitError('No pudimos verificar el envío. Intenta nuevamente.')
       } else if (
@@ -183,8 +395,10 @@ export function StudentSessionPage() {
         )
       }
     } finally {
-      turnstileRef.current?.reset()
-      setIsSubmitting(false)
+      if (activePulseIdRef.current === pulseId) {
+        turnstileRef.current?.reset()
+        setIsSubmitting(false)
+      }
     }
   }
 
@@ -220,6 +434,8 @@ export function StudentSessionPage() {
     )
   }
 
+  const activePulseId = session.active_pulse_id
+
   return (
     <main className="signal-shell min-h-screen bg-[#f4f7fb] pb-10">
       <StudentHeader />
@@ -230,9 +446,16 @@ export function StudentSessionPage() {
           <p className="text-xs font-extrabold tracking-[0.13em] text-blue-700 uppercase">
             {session.subject}
           </p>
-          <span className="rounded-lg bg-slate-200 px-2.5 py-1 font-mono text-xs font-extrabold tracking-[0.12em] text-slate-700">
-            {session.code}
-          </span>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {session.is_active && activePulseId && session.active_pulse_ordinal && (
+              <span className="rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-extrabold text-blue-700">
+                Pulso {session.active_pulse_ordinal}
+              </span>
+            )}
+            <span className="rounded-lg bg-slate-200 px-2.5 py-1 font-mono text-xs font-extrabold tracking-[0.12em] text-slate-700">
+              {session.code}
+            </span>
+          </div>
         </div>
         <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
           {session.title}
@@ -248,6 +471,20 @@ export function StudentSessionPage() {
           </p>
         </div>
 
+        {refreshError && (
+          <Alert className="mt-5" tone="error">
+            {refreshError}
+          </Alert>
+        )}
+
+        <div aria-live="polite">
+          {pulseAnnouncement && (
+            <Alert className="mt-5" title="Actualización de la clase">
+              {pulseAnnouncement}
+            </Alert>
+          )}
+        </div>
+
         {!session.is_active ? (
           <section className="mt-7 rounded-[1.5rem] border border-slate-200 bg-white p-6 text-center shadow-[0_12px_38px_rgba(7,26,43,0.06)] sm:p-9">
             <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-slate-100 text-slate-600">
@@ -258,15 +495,40 @@ export function StudentSessionPage() {
               El profesor ya finalizó la recepción de respuestas. Consulta con él si la clase volverá a abrirse.
             </p>
           </section>
+        ) : !activePulseId ? (
+          <section className="mt-7 rounded-[1.5rem] border border-slate-200 bg-white p-6 text-center shadow-[0_12px_38px_rgba(7,26,43,0.06)] sm:p-9" aria-live="polite">
+            <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-amber-50 text-amber-700">
+              <Clock3 className="size-6" aria-hidden="true" />
+            </span>
+            <p className="mt-6 text-xs font-extrabold tracking-[0.14em] text-amber-700 uppercase">
+              Entre pulsos
+            </p>
+            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+              Esperando el próximo pulso
+            </h2>
+            <p className="mt-3 leading-7 text-slate-600">
+              La clase sigue abierta. El profesor está preparando la siguiente comprobación y aparecerá aquí automáticamente.
+            </p>
+          </section>
         ) : isSubmitted ? (
           <section className="mt-7 rounded-[1.5rem] border border-emerald-200 bg-white p-6 text-center shadow-[0_12px_38px_rgba(7,26,43,0.06)] sm:p-9" aria-live="polite">
             <span className="mx-auto grid size-16 place-items-center rounded-2xl bg-emerald-50 text-emerald-700">
               <CheckCircle2 className="size-8" aria-hidden="true" />
             </span>
-            <p className="mt-6 text-xs font-extrabold tracking-[0.14em] text-emerald-700 uppercase">Respuesta enviada</p>
+            <p className="mt-6 text-xs font-extrabold tracking-[0.14em] text-emerald-700 uppercase">
+              {session.active_pulse_ordinal
+                ? `Pulso ${session.active_pulse_ordinal} registrado`
+                : 'Respuesta registrada'}
+            </p>
             <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">Gracias por decir cómo vas</h2>
             <p className="mt-3 leading-7 text-slate-600">
-              Tu profesor ya puede ver la señal <strong>{submittedStatus ? statusContent[submittedStatus].label.toLowerCase() : ''}</strong>, sin saber quién la envió.
+              {submittedStatus ? (
+                <>
+                  Tu profesor ya puede ver la señal <strong>{statusContent[submittedStatus].label.toLowerCase()}</strong>, sin saber quién la envió.
+                </>
+              ) : (
+                <>Tu respuesta para este pulso ya está registrada, sin revelar quién la envió.</>
+              )}
             </p>
             <p className="mt-5 text-sm font-semibold text-slate-500">
               Tu señal quedó registrada. Revisa abajo las dudas anónimas de tu clase.
@@ -274,6 +536,11 @@ export function StudentSessionPage() {
           </section>
         ) : (
           <form className="mt-7 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-[0_14px_45px_rgba(7,26,43,0.07)] sm:p-7" noValidate onSubmit={handleSubmit}>
+            <p className="mb-5 text-xs font-extrabold tracking-[0.13em] text-blue-700 uppercase">
+              {session.active_pulse_ordinal
+                ? `Pulso ${session.active_pulse_ordinal} · abierto`
+                : 'Pulso abierto'}
+            </p>
             <StatusSelector
               disabled={isSubmitting}
               error={errors.status}
@@ -311,7 +578,8 @@ export function StudentSessionPage() {
             {submissionSecurity && (
               <InvisibleTurnstile
                 action={submissionSecurity.turnstile.action}
-                cData={session.id}
+                cData={activePulseId}
+                key={activePulseId}
                 onStatusChange={setTurnstileStatus}
                 ref={turnstileRef}
                 siteKey={submissionSecurity.turnstile.siteKey}
@@ -354,7 +622,7 @@ export function StudentSessionPage() {
                 {!isSubmitting && <ArrowRight className="size-4" aria-hidden="true" />}
               </Button>
               <p className="mt-2 text-center text-xs leading-5 text-slate-400 sm:mt-3">
-                Una respuesta por dispositivo. Turnstile procesa señales técnicas para evitar abuso;
+                Una respuesta por pulso y dispositivo. Turnstile procesa señales técnicas para evitar abuso;
                 ClassSignal no guarda tu IP en la base de datos.{' '}
                 <Link
                   className="font-bold text-slate-500 underline underline-offset-2 hover:text-slate-700"
@@ -367,15 +635,17 @@ export function StudentSessionPage() {
           </form>
         )}
 
-        <PublicQuestionWall
-          error={questionWall.error}
-          hasLoaded={questionWall.hasLoaded}
-          isInitialLoading={questionWall.isInitialLoading}
-          isRefreshing={questionWall.isRefreshing}
-          isVisible={questionWall.isVisible}
-          onRefresh={questionWall.refresh}
-          questions={questionWall.questions}
-        />
+        {session.is_active && activePulseId && (
+          <PublicQuestionWall
+            error={questionWall.error}
+            hasLoaded={questionWall.hasLoaded}
+            isInitialLoading={questionWall.isInitialLoading}
+            isRefreshing={questionWall.isRefreshing}
+            isVisible={questionWall.isVisible}
+            onRefresh={questionWall.refresh}
+            questions={questionWall.questions}
+          />
+        )}
       </div>
     </main>
   )

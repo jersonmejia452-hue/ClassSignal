@@ -11,21 +11,29 @@ import {
   type SessionAnalysis,
 } from '../types/domain'
 
-export function useSessionAnalyses(sessionId: string | undefined) {
+function analysisKey(sessionId: string | undefined, pulseId: string | undefined) {
+  return sessionId && pulseId ? `${sessionId}:${pulseId}` : undefined
+}
+
+export function useSessionAnalyses(
+  sessionId: string | undefined,
+  pulseId: string | undefined,
+) {
   const [analyses, setAnalyses] = useState<SessionAnalysis[]>([])
-  const [isLoading, setIsLoading] = useState(Boolean(sessionId))
+  const [isLoading, setIsLoading] = useState(Boolean(sessionId && pulseId))
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const activeSessionId = useRef<string | undefined>(sessionId)
+  const requestKey = analysisKey(sessionId, pulseId)
+  const activeRequestKey = useRef<string | undefined>(requestKey)
   const errorPendingRunId = useRef<string | null>(null)
 
   const refresh = useCallback(async (silent = false) => {
-    if (!sessionId) return
+    if (!sessionId || !pulseId) return
     if (!silent) setIsLoading(true)
 
     try {
-      const currentAnalyses = await getSessionAnalyses(sessionId)
-      if (activeSessionId.current !== sessionId) return
+      const currentAnalyses = await getSessionAnalyses(sessionId, pulseId)
+      if (activeRequestKey.current !== requestKey) return
       setAnalyses(currentAnalyses)
       const pendingRunId = errorPendingRunId.current
       const latest = currentAnalyses[0]
@@ -35,7 +43,7 @@ export function useSessionAnalyses(sessionId: string | undefined) {
       }
       return currentAnalyses
     } catch (refreshError) {
-      if (activeSessionId.current !== sessionId || silent) return
+      if (activeRequestKey.current !== requestKey || silent) return
       setError(
         getErrorMessage(
           refreshError,
@@ -43,14 +51,22 @@ export function useSessionAnalyses(sessionId: string | undefined) {
         ),
       )
     } finally {
-      if (!silent && activeSessionId.current === sessionId) setIsLoading(false)
+      if (!silent && activeRequestKey.current === requestKey) setIsLoading(false)
     }
-  }, [sessionId])
+  }, [pulseId, requestKey, sessionId])
 
   useEffect(() => {
-    if (!sessionId) return undefined
+    if (!sessionId || !pulseId) {
+      activeRequestKey.current = undefined
+      setAnalyses([])
+      setIsLoading(false)
+      setIsAnalyzing(false)
+      setError(null)
+      errorPendingRunId.current = null
+      return undefined
+    }
 
-    activeSessionId.current = sessionId
+    activeRequestKey.current = requestKey
     setAnalyses([])
     setError(null)
     setIsAnalyzing(false)
@@ -58,9 +74,9 @@ export function useSessionAnalyses(sessionId: string | undefined) {
     void refresh()
 
     return () => {
-      if (activeSessionId.current === sessionId) activeSessionId.current = undefined
+      if (activeRequestKey.current === requestKey) activeRequestKey.current = undefined
     }
-  }, [refresh, sessionId])
+  }, [refresh, requestKey, sessionId])
 
   const latestRun = analyses[0] ?? null
   const latestCompleted = analyses.find(
@@ -91,15 +107,15 @@ export function useSessionAnalyses(sessionId: string | undefined) {
   }, [latestRun?.created_at, latestRun?.status, refresh])
 
   const runAnalysis = useCallback(async () => {
-    if (!sessionId) return
+    if (!sessionId || !pulseId) return
 
     const attemptStartedAt = Date.now()
     setIsAnalyzing(true)
     setError(null)
 
     try {
-      const { analysis } = await analyzeSession(sessionId)
-      if (activeSessionId.current !== sessionId) return
+      const { analysis } = await analyzeSession(sessionId, pulseId)
+      if (activeRequestKey.current !== requestKey) return
 
       setAnalyses((current) => [
         analysis,
@@ -107,13 +123,13 @@ export function useSessionAnalyses(sessionId: string | undefined) {
       ])
       errorPendingRunId.current = null
     } catch (analysisError) {
-      if (activeSessionId.current !== sessionId) return
+      if (activeRequestKey.current !== requestKey) return
       const message = getErrorMessage(
         analysisError,
         'No pudimos generar el mapa de confusión.',
       )
       const refreshedAnalyses = await refresh(true)
-      if (activeSessionId.current !== sessionId) return
+      if (activeRequestKey.current !== requestKey) return
       const refreshedLatest = refreshedAnalyses?.[0]
       const completedDuringAttempt = refreshedLatest?.status === 'completed'
         && refreshedLatest.completed_at
@@ -135,9 +151,9 @@ export function useSessionAnalyses(sessionId: string | undefined) {
         : null
       setError(message)
     } finally {
-      if (activeSessionId.current === sessionId) setIsAnalyzing(false)
+      if (activeRequestKey.current === requestKey) setIsAnalyzing(false)
     }
-  }, [refresh, sessionId])
+  }, [pulseId, refresh, requestKey, sessionId])
 
   return {
     analyses,

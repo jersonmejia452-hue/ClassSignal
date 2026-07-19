@@ -11,6 +11,7 @@ vi.mock('./supabase', () => ({
 import { getStudentQuestionWall } from './questions.service'
 
 const sessionId = '00000000-0000-4000-8000-000000000001'
+const pulseId = '00000000-0000-4000-8000-000000000003'
 
 describe('getStudentQuestionWall', () => {
   beforeEach(() => {
@@ -21,6 +22,7 @@ describe('getStudentQuestionWall', () => {
     rpcMock.mockResolvedValue({
       data: {
         visible: true,
+        pulse_id: pulseId,
         questions: [{
           id: '00000000-0000-4000-8000-000000000002',
           question_text: '¿Cómo interpreto la dirección del vector?',
@@ -29,7 +31,7 @@ describe('getStudentQuestionWall', () => {
       error: null,
     })
 
-    await expect(getStudentQuestionWall(sessionId)).resolves.toMatchObject({
+    await expect(getStudentQuestionWall(sessionId, pulseId)).resolves.toMatchObject({
       visible: true,
       questions: [{
         question_text: '¿Cómo interpreto la dirección del vector?',
@@ -37,6 +39,7 @@ describe('getStudentQuestionWall', () => {
     })
     expect(rpcMock).toHaveBeenCalledWith('get_student_question_wall', {
       p_session_id: sessionId,
+      p_pulse_id: pulseId,
       p_limit: 50,
     })
   })
@@ -45,13 +48,14 @@ describe('getStudentQuestionWall', () => {
     const rpcError = new Error('rpc unavailable')
     rpcMock.mockResolvedValue({ data: null, error: rpcError })
 
-    await expect(getStudentQuestionWall(sessionId)).rejects.toBe(rpcError)
+    await expect(getStudentQuestionWall(sessionId, pulseId)).rejects.toBe(rpcError)
   })
 
   it('rechaza respuestas que intenten incluir datos privados', async () => {
     rpcMock.mockResolvedValue({
       data: {
         visible: true,
+        pulse_id: pulseId,
         questions: [{
           id: '00000000-0000-4000-8000-000000000002',
           question_text: '¿Qué diferencia hay entre dirección y sentido?',
@@ -61,8 +65,23 @@ describe('getStudentQuestionWall', () => {
       error: null,
     })
 
-    await expect(getStudentQuestionWall(sessionId)).rejects.toThrow(
+    await expect(getStudentQuestionWall(sessionId, pulseId)).rejects.toThrow(
       'El servidor devolvió un muro de dudas inesperado.',
+    )
+  })
+
+  it('rechaza un payload atribuido a otro pulso', async () => {
+    rpcMock.mockResolvedValue({
+      data: {
+        visible: true,
+        pulse_id: '00000000-0000-4000-8000-000000000004',
+        questions: [],
+      },
+      error: null,
+    })
+
+    await expect(getStudentQuestionWall(sessionId, pulseId)).rejects.toThrow(
+      'El servidor devolvió dudas de un pulso distinto.',
     )
   })
 })

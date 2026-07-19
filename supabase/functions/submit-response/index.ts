@@ -63,7 +63,9 @@ function getNetworkAddress(request: Request) {
   const clientIp = getClientIp(request);
   if (clientIp) return clientIp;
 
-  return `unknown:${(request.headers.get("user-agent") ?? "none").slice(0, 180)}`;
+  return `unknown:${
+    (request.headers.get("user-agent") ?? "none").slice(0, 180)
+  }`;
 }
 
 function isLikelyIpAddress(value: string) {
@@ -136,11 +138,13 @@ async function createHmac(source: string, secret: string) {
     false,
     ["sign"],
   );
-  return new Uint8Array(await crypto.subtle.sign(
-    "HMAC",
-    key,
-    new TextEncoder().encode(source),
-  ));
+  return new Uint8Array(
+    await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(source),
+    ),
+  );
 }
 
 async function createDailyNetworkFingerprint(
@@ -159,13 +163,13 @@ async function createDailyNetworkFingerprint(
   ).join("");
 }
 
-async function createSessionAnonymousId(
-  sessionId: string,
+async function createPulseAnonymousId(
+  pulseId: string,
   clientAnonymousId: string,
   secret: string,
 ) {
   const digest = await createHmac(
-    `anonymous:${sessionId}:${clientAnonymousId}`,
+    `anonymous:${pulseId}:${clientAnonymousId}`,
     secret,
   );
   const uuidBytes = digest.slice(0, 16);
@@ -195,6 +199,7 @@ function parseSubmission(value: unknown) {
   }
 
   const sessionId = value.sessionId;
+  const pulseId = value.pulseId;
   const anonymousId = value.anonymousId;
   const status = value.status;
   const questionText = value.questionText;
@@ -202,6 +207,7 @@ function parseSubmission(value: unknown) {
 
   if (
     typeof sessionId !== "string" || !UUID_PATTERN.test(sessionId) ||
+    typeof pulseId !== "string" || !UUID_PATTERN.test(pulseId) ||
     typeof anonymousId !== "string" || !UUID_PATTERN.test(anonymousId) ||
     typeof status !== "string" || !RESPONSE_STATUSES.has(status) ||
     typeof turnstileToken !== "string" || turnstileToken.length === 0 ||
@@ -229,6 +235,7 @@ function parseSubmission(value: unknown) {
 
   return {
     sessionId,
+    pulseId,
     anonymousId,
     status,
     questionText: normalizedQuestion || null,
@@ -243,7 +250,7 @@ function mapDatabaseError(error: unknown) {
     return new PublicFunctionError(
       409,
       "duplicate_response",
-      "Ya enviaste una respuesta desde este dispositivo para esta clase.",
+      "Ya enviaste una respuesta desde este dispositivo para este pulso.",
     );
   }
 
@@ -264,12 +271,23 @@ function mapDatabaseError(error: unknown) {
     response_rate_limit: {
       status: 429,
       code: "response_rate_limit",
-      message: "Se recibieron demasiados envíos desde esta red. Espera unos minutos.",
+      message:
+        "Se recibieron demasiados envíos desde esta red. Espera unos minutos.",
     },
     session_response_limit: {
       status: 409,
       code: "session_response_limit",
       message: "La clase alcanzó su capacidad de respuestas.",
+    },
+    pulse_response_limit: {
+      status: 409,
+      code: "pulse_response_limit",
+      message: "Este pulso alcanzó su capacidad de respuestas.",
+    },
+    pulse_inactive: {
+      status: 409,
+      code: "pulse_inactive",
+      message: "Este pulso ya terminó. Espera el pulso activo de la clase.",
     },
   };
 
@@ -301,13 +319,11 @@ Deno.serve(async (request) => {
       });
     } catch (error) {
       return errorResponse(
-        error instanceof PublicFunctionError
-          ? error
-          : new PublicFunctionError(
-            503,
-            "submission_not_configured",
-            "El envío seguro de respuestas no está configurado temporalmente.",
-          ),
+        error instanceof PublicFunctionError ? error : new PublicFunctionError(
+          503,
+          "submission_not_configured",
+          "El envío seguro de respuestas no está configurado temporalmente.",
+        ),
       );
     }
   }
@@ -357,7 +373,7 @@ Deno.serve(async (request) => {
     const verification = await verifyTurnstileToken({
       token: submission.turnstileToken,
       secretKey: configuration.turnstile.secretKey,
-      expectedCData: submission.sessionId,
+      expectedCData: submission.pulseId,
       remoteIp: getClientIp(request),
       expectedHostnames: configuration.turnstile.expectedHostnames,
     });
@@ -382,8 +398,8 @@ Deno.serve(async (request) => {
       request,
       configuration.hmacSecret,
     );
-    const serverAnonymousId = await createSessionAnonymousId(
-      submission.sessionId,
+    const serverAnonymousId = await createPulseAnonymousId(
+      submission.pulseId,
       submission.anonymousId,
       configuration.hmacSecret,
     );
@@ -395,13 +411,17 @@ Deno.serve(async (request) => {
       },
     );
 
-    const { data, error } = await supabase.rpc("submit_student_response_server_v2", {
-      p_session_id: submission.sessionId,
-      p_anonymous_id: serverAnonymousId,
-      p_status: submission.status,
-      p_question_text: submission.questionText,
-      p_network_fingerprint: networkFingerprint,
-    });
+    const { data, error } = await supabase.rpc(
+      "submit_student_response_server_v2",
+      {
+        p_session_id: submission.sessionId,
+        p_pulse_id: submission.pulseId,
+        p_anonymous_id: serverAnonymousId,
+        p_status: submission.status,
+        p_question_text: submission.questionText,
+        p_network_fingerprint: networkFingerprint,
+      },
+    );
 
     if (error) throw mapDatabaseError(error);
     const outcome = isRecord(data) && typeof data.outcome === "string"
@@ -413,7 +433,7 @@ Deno.serve(async (request) => {
         duplicate_response: new PublicFunctionError(
           409,
           "duplicate_response",
-          "Ya enviaste una respuesta desde este dispositivo para esta clase.",
+          "Ya enviaste una respuesta desde este dispositivo para este pulso.",
         ),
         session_not_found: new PublicFunctionError(
           404,
@@ -434,6 +454,16 @@ Deno.serve(async (request) => {
           409,
           "session_response_limit",
           "La clase alcanzó su capacidad de respuestas.",
+        ),
+        pulse_response_limit: new PublicFunctionError(
+          409,
+          "pulse_response_limit",
+          "Este pulso alcanzó su capacidad de respuestas.",
+        ),
+        pulse_inactive: new PublicFunctionError(
+          409,
+          "pulse_inactive",
+          "Este pulso ya terminó. Espera el pulso activo de la clase.",
         ),
       };
       throw outcomeErrors[outcome ?? ""] ?? new PublicFunctionError(

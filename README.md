@@ -2,7 +2,7 @@
 
 ClassSignal es un MVP educativo mobile-first para conocer el pulso de comprensión de una clase sin obligar a los estudiantes a crear una cuenta. El profesor organiza su trabajo por cursos, abre una clase dentro del curso, comparte un código corto o QR y recibe señales anónimas en tiempo real.
 
-El modelo de navegación es **curso → clase (sesión) → señales**. Un curso conserva el contexto académico y agrupa sus clases; cada clase tiene su propio enlace público, estado, resumen y mapa de confusión.
+El modelo de navegación es **curso → clase (sesión) → pulsos → señales**. Un curso conserva el contexto académico y agrupa sus clases; cada clase mantiene un único código, enlace y QR, mientras sus pulsos separan mediciones sucesivas para comparar al grupo antes y después de una intervención docente.
 
 ## Alcance de esta versión
 
@@ -12,16 +12,19 @@ Esta rebanada vertical incluye:
 - creación de cursos con nombre, materia y descripción opcional;
 - vista de cada curso con sus clases y acceso directo para iniciar una nueva;
 - creación, cierre y reactivación de sesiones;
+- creación automática de `Pulso 1` y apertura de hasta seis pulsos por clase;
+- un solo pulso activo a la vez; abrir el siguiente cierra el anterior sin cambiar código, enlace ni QR;
+- cierre del pulso activo al finalizar la clase y creación de uno nuevo al reactivarla;
 - código público de seis caracteres y enlace/QR para estudiantes;
 - acceso estudiantil sin cuenta desde `/unirse` o `/s/:codigo`;
 - estados `Entendí`, `Tengo una duda` y `Estoy perdido`;
 - duda escrita opcional de hasta 1.000 caracteres;
 - identificador anónimo persistente en `localStorage`;
-- una respuesta por identificador y sesión;
-- feed de respuestas y resumen porcentual en tiempo real;
-- muro anónimo de dudas para estudiantes, activado por el profesor, con actualización automática y moderación individual;
-- pulso histórico por curso para comparar comprensión, participación y tendencia entre clases;
-- modo proyector con QR, código y pulso agregado, sin mostrar dudas individuales;
+- una respuesta por identificador y pulso;
+- feed, resumen porcentual y comparación en puntos porcentuales entre pulsos;
+- muro anónimo de dudas por pulso, oculto al abrir cada medición, con actualización automática y moderación individual;
+- pulso histórico por curso basado en el último pulso con respuestas de cada clase;
+- modo proyector con QR, código y resultados del pulso activo, sin mostrar dudas individuales;
 - mapa de confusión bajo demanda con GPT‑5.6 y Structured Outputs;
 - historial de análisis, caché, tokens, duración, costo estimado y recomendaciones docentes;
 - demo pública guiada en `/demo`, con 20 estudiantes y resultados precargados, sin escrituras ni consumo de API;
@@ -30,7 +33,13 @@ Esta rebanada vertical incluye:
 - datos de demostración opcionales;
 - pruebas unitarias para códigos, respuestas, porcentajes y cálculo de costo.
 
-La IA no se ejecuta automáticamente: un profesor autenticado debe pulsar **Analizar sesión**. La Edge Function excluye correos, UUID de respuestas e identificadores anónimos, y envía a OpenAI únicamente el contexto académico, el estado de comprensión y el texto opcional de las dudas. La solicitud usa `store: false`.
+La IA no se ejecuta automáticamente: un profesor autenticado debe pulsar **Analizar pulso**. La Edge Function excluye correos, UUID de respuestas e identificadores anónimos, y envía a OpenAI únicamente el contexto académico, el estado de comprensión y el texto opcional de las dudas del pulso seleccionado. Snapshot, caché e historial quedan ligados a `pulse_id`; no se mezclan rondas. La solicitud usa `store: false`.
+
+### Ciclo de pulsos
+
+Una sesión activa tiene exactamente un pulso activo. La creación de la clase abre Pulso 1; **Abrir nuevo pulso** cierra el actual y crea el ordinal siguiente en una operación atómica. Se exige al menos una respuesta aceptada en el pulso actual y nunca se puede superar el ordinal 6. Los pulsos cerrados son inmutables. Finalizar la clase cierra su pulso; reactivarla crea uno nuevo en lugar de modificar el anterior.
+
+Cada pulso reutiliza los tres estados de comprensión y la duda opcional. No contiene preguntas, respuestas correctas, temporizadores ni actividades generadas. La comparación usa porcentajes agregados y puntos porcentuales entre pulsos consecutivos; no intenta seguir estudiantes individuales.
 
 ## Stack
 
@@ -69,20 +78,24 @@ El repositorio incluye `package-lock.json`; `npm ci` conserva exactamente las ve
 
 Las migraciones crean:
 
-- `public.courses`, `public.sessions` y `public.responses`;
+- `public.courses`, `public.sessions`, `public.session_pulses` y `public.responses`;
 - relación opcional `sessions.course_id`, protegida por una clave foránea compuesta que impide asignar una clase al curso de otro profesor;
-- restricciones de longitud, estados válidos y unicidad;
-- índices para sesiones del profesor y respuestas por sesión;
+- `session_pulses(id, session_id, ordinal, is_active, questions_visible_to_students, started_at, ended_at)`;
+- creación automática de Pulso 1, un máximo de seis pulsos y un único pulso activo por sesión;
+- operaciones atómicas para cerrar el pulso actual y abrir el siguiente, seguras ante doble clic o pestañas concurrentes;
+- `responses.pulse_id` y `session_analyses.pulse_id`, con backfill de datos anteriores hacia Pulso 1;
+- restricciones de longitud, estados válidos y unicidad por `(pulse_id, anonymous_id)`;
+- índices para sesiones del profesor y respuestas por pulso;
 - políticas RLS y privilegios separados para `authenticated` y `anon`;
 - la RPC pública y limitada `get_public_session`;
-- la RPC pública y acotada `get_student_question_wall`, que entrega solo las dudas no excluidas mientras la sesión está activa y el profesor habilita el muro;
-- la RPC autenticada `get_course_pulse_history`, que entrega únicamente conteos agregados de cursos propios;
+- la RPC pública y acotada `get_student_question_wall`, que entrega solo las dudas no excluidas del pulso visible mientras la sesión está activa;
+- la RPC autenticada `get_course_pulse_history`, que entrega únicamente el último pulso con respuestas de cada clase propia;
 - la publicación de `public.responses` en `supabase_realtime`;
 - `public.session_analyses`, con historial inmutable, caché de snapshots y lectura limitada al profesor propietario;
 - telemetría de tokens/costo y cuotas atómicas de análisis;
 - una RPC exclusiva de `service_role` para aceptar respuestas desde la Edge Function sin conceder `INSERT` al navegador anónimo.
 
-Ejecuta los archivos de `supabase/migrations` en orden. No vuelvas a ejecutar la migración inicial completa sobre el mismo esquema: administra cambios posteriores con nuevas migraciones.
+Ejecuta los archivos de `supabase/migrations` en orden. No vuelvas a ejecutar la migración inicial completa sobre el mismo esquema: administra cambios posteriores con nuevas migraciones. La migración de rondas crea Pulso 1 para cada clase existente y asigna allí sus respuestas y análisis previos antes de exigir `pulse_id` en nuevas escrituras.
 
 ### Supabase local opcional
 
@@ -97,9 +110,9 @@ La configuración local usa los puertos `55321` (API), `55322` (Postgres), `5532
 
 ### Realtime
 
-La migración añade automáticamente `public.responses` a la publicación `supabase_realtime`. No debería hacer falta activarla manualmente. Si el panel docente permanece en “Conectando”, verifica en el Dashboard que la tabla `responses` pertenezca a esa publicación y que la migración haya terminado sin errores.
+Las migraciones añaden automáticamente `public.responses` y `public.session_pulses` a la publicación `supabase_realtime`. No debería hacer falta activarlas manualmente. Si el panel docente permanece en “Conectando”, verifica en el Dashboard que ambas tablas pertenezcan a esa publicación y que la migración haya terminado sin errores.
 
-El cliente docente escucha únicamente eventos `INSERT` de la sesión abierta y realiza además una consulta inicial, por lo que muestra tanto las respuestas existentes como las nuevas. El muro estudiantil no abre Realtime sobre la tabla base: consulta una proyección pública mínima cada 15 segundos y permite actualizarla manualmente.
+El cliente docente carga de forma paginada un máximo de 3.000 respuestas por clase —seis pulsos de 500— y escucha sus eventos `INSERT`. Cada fila conserva un `pulse_id` obligatorio y resumen, feed, comparación, proyector y análisis filtran explícitamente el pulso correspondiente, por lo que nunca suman rondas distintas. El estudiante consulta la sesión pública cada cinco segundos para detectar un pulso nuevo sin recargar. El muro no abre Realtime sobre la tabla base: consulta una proyección pública mínima del pulso visible y permite actualizarla manualmente.
 
 ## 3. Configurar autenticación por correo
 
@@ -176,7 +189,7 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'
 2. Guarda la site key como `TURNSTILE_SITE_KEY` y la clave privada como `TURNSTILE_SECRET_KEY` en los secretos de Edge Functions.
 3. Define obligatoriamente `TURNSTILE_EXPECTED_HOSTNAMES` con los hostnames permitidos, separados por comas y sin protocolo, puerto ni ruta.
 
-La Edge Function entrega por `GET` solamente la site key y la acción pública. Cada `POST` exige un token nuevo, lo valida con Siteverify y comprueba `action=submit_response`, `cData=sessionId` y el hostname exacto. Los tokens duran cinco minutos, son de un solo uso y cualquier error o indisponibilidad falla cerrado.
+La Edge Function entrega por `GET` solamente la site key y la acción pública. Cada `POST` exige un token nuevo, lo valida con Siteverify y comprueba `action=submit_response`, `cData=pulseId` y el hostname exacto. El cuerpo incluye sesión y pulso; el servidor verifica que ambos se correspondan y que ese pulso siga activo. Un token emitido para una ronda cerrada no autoriza la siguiente. Los tokens duran cinco minutos, son de un solo uso y cualquier error o indisponibilidad falla cerrado.
 
 Para desarrollo local y pruebas automatizadas usa las credenciales oficiales de prueba de Cloudflare, nunca un bypass en el código:
 
@@ -208,7 +221,17 @@ npx supabase functions deploy submit-response --no-verify-jwt
 npx supabase functions deploy analyze-session
 ```
 
-Si actualizas una versión antigua que todavía insertaba respuestas directamente desde el navegador, coordina migración, Edge Function y frontend en la misma ventana de despliegue: la migración retira deliberadamente ese permiso legado. En una instalación nueva no existe esa transición.
+La incorporación de rondas cambia el contrato entre base de datos, funciones y navegador, por lo que debe desplegarse en una ventana coordinada:
+
+1. pausa publicaciones del frontend;
+2. aplica todas las migraciones y confirma el backfill hacia Pulso 1;
+3. despliega `submit-response` y `analyze-session`;
+4. publica frontend y worker;
+5. ejecuta una prueba de humo con dos pulsos y el mismo código.
+
+No publiques el frontend nuevo antes del esquema y las dos funciones: las escrituras requieren `pulse_id` y los análisis quedan acotados al pulso seleccionado. No hacen falta secretos nuevos. Si debes revertir, coordina esquema, funciones y frontend como una sola versión; no dejes un cliente que use rondas contra funciones antiguas.
+
+Si además actualizas una versión que todavía insertaba respuestas directamente desde el navegador, esta misma ventana debe incluir el retiro del permiso legado. En una instalación nueva no existe esa transición.
 
 Para desarrollo local, inicia Supabase y sirve la función con el mismo archivo privado de entorno:
 
@@ -216,7 +239,7 @@ Para desarrollo local, inicia Supabase y sirve la función con el mismo archivo 
 npx supabase functions serve --env-file .env.local
 ```
 
-`analyze-session` exige un JWT de profesor válido. `submit-response` no exige cuenta porque el estudiante es anónimo, pero exige Turnstile, valida el cuerpo, seudonimiza el identificador y llama una RPC disponible únicamente para `service_role`; nunca expone credenciales privadas. Si falta Turnstile, su lista de hostnames o el secreto HMAC dedicado, el envío falla cerrado. Si falta `OPENAI_API_KEY`, el resto del MVP sigue funcionando y el panel muestra un error de configuración sin exponer secretos.
+`analyze-session` conserva su nombre técnico y exige un JWT de profesor válido, pero analiza un solo `pulse_id`. `submit-response` no exige cuenta porque el estudiante es anónimo, pero exige Turnstile, valida sesión y pulso, seudonimiza el identificador por pulso y llama una RPC disponible únicamente para `service_role`; nunca expone credenciales privadas. Si falta Turnstile, su lista de hostnames o el secreto HMAC dedicado, el envío falla cerrado. Si falta `OPENAI_API_KEY`, el resto del MVP sigue funcionando y el panel muestra un error de configuración sin exponer secretos.
 
 ## 5. Ejecutar la aplicación
 
@@ -240,7 +263,7 @@ npm run preview  # vista local del build generado
 | Ruta | Acceso | Función |
 | --- | --- | --- |
 | `/` | Público | Redirige al acceso estudiantil |
-| `/demo` | Público, sin cuenta | Recorrido guiado con una clase simulada y análisis precargado |
+| `/demo` | Público, sin cuenta | Recorrido guiado con dos pulsos, comparación antes/después y análisis precargado |
 | `/unirse` | Público, sin cuenta | Entrada mediante código de seis caracteres |
 | `/profesor/login` | Público | Inicio de sesión y registro opcional por correo |
 | `/profesor` | Profesor autenticado | Inicio y lista de cursos propios |
@@ -248,10 +271,12 @@ npm run preview  # vista local del build generado
 | `/profesor/curso/:courseId` | Profesor propietario | Detalle del curso y sus clases |
 | `/profesor/curso/:courseId/sesion/nueva` | Profesor propietario | Creación de una clase dentro del curso |
 | `/profesor/sesiones/nueva` | Profesor autenticado | Ruta compatible para crear una sesión sin curso |
-| `/profesor/sesion/:id` | Profesor propietario | QR, código, estado, resumen, respuestas en vivo y control del muro de dudas |
-| `/profesor/sesion/:id/presentar` | Profesor propietario | QR, código y pulso agregado para proyectar |
-| `/s/:codigo` | Público, sin cuenta | Respuesta anónima y muro de dudas compartidas de la clase |
+| `/profesor/sesion/:id` | Profesor propietario | Administra el pulso activo, historial, comparación, respuestas, análisis y muro |
+| `/profesor/sesion/:id/presentar` | Profesor propietario | Mismo QR y código, con métricas agregadas del pulso activo |
+| `/s/:codigo` | Público, sin cuenta | Detecta el pulso activo y permite una respuesta anónima por ronda |
 | `/privacidad` | Público | Aviso técnico de privacidad y proveedores del MVP |
+
+Los pulsos no crean rutas, códigos ni enlaces nuevos. El mismo acceso acompaña toda la clase y la sesión pública expone solo el pulso activo necesario para presentar el formulario correcto.
 
 ## Estructura del proyecto
 
@@ -279,64 +304,71 @@ supabase/
 
 Usa navegadores distintos o perfiles separados para que sus sesiones y `localStorage` no se mezclen.
 
-1. En el **navegador A**, abre `/profesor/login` e inicia sesión con una cuenta docente autorizada. Para probar registro, habilítalo temporalmente en Supabase Auth y en la variable de entorno.
-2. Si la confirmación de correo está activa, confirma la cuenta y vuelve a iniciar sesión.
-3. Crea un curso y entra a su detalle.
-4. Crea una clase dentro del curso con título y tema.
-5. Mantén abierta la pantalla de detalle; debe mostrar código, QR, enlace y el indicador “En vivo”.
-6. Abre **modo proyector** en otra ventana y comprueba que muestre solo métricas agregadas.
-7. En el **navegador B**, abre `/unirse`, escribe el código o escanea el QR.
-8. Elige un estado, escribe una duda opcional y envíala. Turnstile se ejecuta en segundo plano al pulsar el botón, sin un paso adicional en el flujo normal.
-9. Sin recargar el navegador A ni la proyección, comprueba que cambien el total y los porcentajes.
-10. En el navegador A, pulsa **Analizar sesión** y comprueba el mapa, los tokens, la duración y el costo estimado.
-11. Envía otra respuesta desde un perfil distinto: el mapa anterior se marca como desactualizado hasta que pulses **Actualizar mapa**.
-12. Intenta responder otra vez desde el mismo navegador B: debe mostrarse el límite de una respuesta por dispositivo y sesión.
-13. Finaliza la sesión desde el navegador A. Una carga nueva del enlace muestra la sesión cerrada y cualquier envío posterior queda bloqueado por la operación atómica del servidor.
-14. Regresa al curso y verifica que el pulso histórico compare las clases medidas sin exponer textos de dudas.
+1. En el **navegador A**, abre `/profesor/login`, inicia sesión, crea un curso y crea una clase.
+2. Comprueba que la clase nace con **Pulso 1** activo y que muestra código, QR y enlace.
+3. Intenta abrir Pulso 2 sin respuestas: la interfaz debe exigir al menos una señal aceptada.
+4. Abre **modo proyector** y comprueba que muestre Pulso 1 y solo métricas agregadas.
+5. En el **navegador B**, entra con el código, elige un estado, escribe una duda opcional y envíala. Turnstile debe ejecutarse sin pasos adicionales.
+6. Sin recargar A ni la proyección, comprueba que cambien total y porcentajes de Pulso 1.
+7. Intenta responder otra vez desde B: debe aparecer **Ya respondiste este pulso**.
+8. En A, pulsa **Analizar pulso** y comprueba mapa, tokens, duración y costo estimado. Otra respuesta en Pulso 1 debe marcar ese mapa como desactualizado.
+9. Abre **Pulso 2** y confirma que Pulso 1 queda cerrado, el muro nuevo empieza oculto y código, enlace y QR no cambian.
+10. Mantén B abierto: debe detectar Pulso 2 en menos de diez segundos, sin recargar.
+11. Responde desde el mismo navegador B en Pulso 2 y comprueba que un segundo intento en esa ronda se rechaza.
+12. Verifica que feed, resumen, muro, proyector y análisis de Pulso 2 no incluyan respuestas de Pulso 1; consulta luego Pulso 1 desde el historial.
+13. Abre el siguiente pulso simultáneamente desde dos pestañas docentes y comprueba que solo se cree un ordinal.
+14. Finaliza la clase y confirma que el pulso activo se cierra y los envíos posteriores se rechazan.
+15. Reactiva la clase: debe crearse el ordinal siguiente, sin reabrir un pulso cerrado.
+16. Continúa hasta seis pulsos y confirma que el séptimo se rechaza.
+17. Regresa al curso y verifica que el histórico use el último pulso con respuestas, sin exponer dudas.
+18. Prueba una clase creada antes de la migración y confirma que sus datos aparecen como Pulso 1.
+19. Borra `localStorage` y vuelve a enviar al mismo pulso: aunque el cliente pierda su estado visual, el servidor debe seguir aplicando unicidad y límites.
 
-Para simular varios estudiantes usa perfiles o navegadores independientes. Varias pestañas del mismo perfil comparten el identificador anónimo.
+Para simular varios estudiantes usa perfiles o navegadores independientes. Varias pestañas del mismo perfil comparten el identificador local, pero el servidor deriva un seudónimo distinto para cada pulso.
 
 ## Demo pública para presentaciones
 
-Abre `/demo` para recorrer el producto sin iniciar sesión ni depender de servicios externos. El escenario contiene 20 señales simuladas de una primera clase de Cálculo Vectorial, un mapa de confusión precargado y cuatro mediciones históricas.
+Abre `/demo` para recorrer el producto sin iniciar sesión ni depender de servicios externos. Sus cuatro pasos permiten responder Pulso 1, observar el panel, consultar un mapa de confusión precargado, responder Pulso 2 con el mismo código y comparar el grupo antes/después. El resultado final también alimenta cuatro mediciones históricas.
 
 La selección del visitante se procesa únicamente en memoria dentro de la pestaña: no consulta Supabase, no ejecuta Turnstile, no llama a OpenAI y no modifica cursos reales. Esto permite presentar ClassSignal con un costo de API de **US$0**.
 
 ## Datos de demostración opcionales
 
-El seed crea la sesión `AULA24` con cinco respuestas sobre “Regla de la cadena”. Primero debe existir al menos un profesor en Supabase Auth.
+El seed crea la sesión `AULA24`, resuelve su Pulso 1 automático y asocia allí cinco respuestas sobre “Regla de la cadena”. Primero debe existir al menos un profesor en Supabase Auth y deben haberse aplicado todas las migraciones.
 
 1. Configura y ejecuta la aplicación.
 2. Registra y confirma una cuenta docente.
 3. En el SQL Editor, ejecuta todo [`supabase/seed.sql`](supabase/seed.sql).
 4. Inicia sesión con el primer usuario creado y abre el panel.
 
-El seed asigna la demo al usuario Auth más antiguo y es repetible: los identificadores son deterministas y los conflictos se ignoran. Si todavía no existe ningún usuario, termina de forma segura sin insertar datos y muestra un aviso en el resultado SQL.
+El seed asigna la demo al usuario Auth más antiguo y es repetible: la sesión y las respuestas usan identificadores deterministas, mientras el pulso se resuelve mediante `(session_id, ordinal)`. Los conflictos se ignoran. Si no existe un usuario o Pulso 1 no fue creado por la migración, termina de forma segura y muestra un aviso en el resultado SQL.
 
 ## Modelo de seguridad
 
 - Los profesores usan Supabase Auth y el rol `authenticated`.
 - Los cursos se autorizan con `professor_id = auth.uid()`; cada profesor solo puede crearlos, consultarlos, modificarlos o eliminarlos dentro de su cuenta.
 - Las sesiones se autorizan con `professor_id = auth.uid()`; un profesor solo puede consultar, modificar o eliminar las propias.
+- Los pulsos heredan la propiedad de su sesión mediante RLS. Solo el profesor propietario puede consultar el historial o abrir el siguiente; un pulso cerrado no puede reabrirse ni modificarse.
 - La clave foránea `(course_id, professor_id)` garantiza en la base de datos que una sesión solo pueda pertenecer a un curso del mismo profesor.
-- Un profesor solo puede leer respuestas asociadas a sus propias sesiones.
-- El pulso histórico usa una RPC `SECURITY INVOKER`, filtra por `auth.uid()` y devuelve conteos agregados; no incluye dudas ni identificadores anónimos.
-- Un profesor solo puede leer análisis de sus propias sesiones; el navegador no tiene privilegios para insertar ni modificar resultados de IA.
+- Un profesor solo puede leer respuestas asociadas a pulsos de sus propias sesiones.
+- El pulso histórico usa una RPC `SECURITY INVOKER`, filtra por `auth.uid()` y devuelve el último pulso con respuestas de cada clase; no incluye dudas ni identificadores anónimos.
+- Un profesor solo puede leer análisis de pulsos propios; el navegador no tiene privilegios para insertar ni modificar resultados de IA.
 - La función limita análisis pagados a 12 por hora y 20 por cada ventana de 24 horas por profesor, con un tope global de 200 por ventana de 24 horas. La caché no consume cuota.
 - Los estudiantes permanecen sin autenticar y usan el rol `anon` mediante un cliente separado.
-- `anon` no tiene lectura directa de las tablas. La RPC `get_public_session` devuelve solamente los campos mínimos para la pantalla pública.
-- El muro de dudas comienza oculto. Su RPC devuelve únicamente `id` y texto de preguntas no excluidas cuando la sesión sigue activa; nunca expone `anonymous_id`, estado de comprensión, hora de envío ni `session_id`.
+- `anon` no tiene lectura directa de `session_pulses`, `responses` ni `session_analyses`. La RPC `get_public_session` devuelve solamente los campos de la clase y el `id`/`ordinal` del pulso activo necesarios para la pantalla pública.
+- El muro comienza oculto en cada pulso nuevo. Su RPC devuelve únicamente `id` y texto de preguntas no excluidas del pulso visible; nunca expone `anonymous_id`, estado de comprensión, hora de envío, `session_id` ni pulsos cerrados.
 - El profesor propietario puede activar u ocultar el muro y moderar cada duda. El estudiante nunca se suscribe directamente a filas de `responses`.
 - `anon` no puede insertar directamente en `responses` ni ejecutar la RPC privilegiada. La Edge Function pública valida, limita y ejecuta una RPC exclusiva de `service_role`.
-- Cada envío exige un token Turnstile nuevo verificado en servidor; se comprueban la acción, la sesión ligada mediante `cData` y un hostname de la lista obligatoria.
+- Cada envío exige un token Turnstile nuevo verificado en servidor; se comprueban la acción, el pulso ligado mediante `cData`, su pertenencia a la sesión, su estado activo y un hostname de la lista obligatoria.
 - El código corto sirve para encontrar una sesión; no es la frontera de autorización. Esa frontera está en los privilegios y políticas RLS de PostgreSQL.
-- La combinación `(session_id, anonymous_id)` es única; el servidor deriva ese UUID mediante HMAC por sesión, por lo que un profesor no puede correlacionar el mismo navegador entre clases.
-- Cada clase acepta como máximo 500 respuestas y cada huella de red diaria tiene un límite de 80 intentos por ventana de 15 minutos; los duplicados y rechazos también consumen la cuota. La huella es un HMAC de corta vida calculado con un secreto dedicado; nunca se almacena la IP.
+- La combinación `(pulse_id, anonymous_id)` es única. El servidor deriva el UUID mediante HMAC por pulso, por lo que ni la base de datos ni el profesor pueden correlacionar el mismo navegador entre rondas.
+- Cada pulso acepta como máximo 500 respuestas. Cada clase admite hasta seis pulsos y exige al menos una respuesta aceptada antes de abrir el siguiente.
+- Cada huella de red diaria tiene un límite de 80 intentos por pulso y ventana de 15 minutos; duplicados y rechazos también consumen la cuota. La huella es un HMAC de corta vida calculado con un secreto dedicado; nunca se almacena la IP.
 - No existe ninguna clave privilegiada en el frontend.
-- La Edge Function de análisis valida el JWT y la propiedad de la sesión; `OPENAI_API_KEY` vive únicamente en secretos de Supabase.
+- La Edge Function de análisis valida JWT, propiedad de la sesión y pertenencia del pulso. Análisis, snapshot y caché usan únicamente respuestas de ese `pulse_id`; `OPENAI_API_KEY` vive solo en secretos de Supabase.
 - Las dudas se tratan como datos no confiables para reducir prompt injection, y los conteos del mapa se derivan en servidor de referencias reales.
 
-El identificador del estudiante es un UUID aleatorio guardado en `localStorage`. Antes de guardarlo en Postgres, el servidor genera otro UUID seudónimo específico para la sesión. No se solicita nombre, correo ni cuenta. Sigue siendo un mecanismo de baja fricción: borrar el almacenamiento o cambiar de navegador genera otro identificador, por eso existen además límites de red y capacidad total.
+El identificador del estudiante es un UUID aleatorio guardado en `localStorage`. Antes de guardar una respuesta, el servidor genera otro UUID seudónimo específico para ese pulso. No se solicita nombre, correo ni cuenta y la comparación antes/después es estrictamente agregada. Borrar el almacenamiento o cambiar de navegador genera otro identificador local, por eso el servidor conserva además límites por red, pulso y capacidad total.
 
 Al validar Turnstile, la Edge Function envía a Cloudflare el token y, cuando está disponible, la dirección de red para la comprobación antiabuso. ClassSignal no guarda la IP en sus tablas: conserva únicamente una huella HMAC diaria no reversible para aplicar límites. En una publicación institucional, refleja este procesador también en el aviso de privacidad de la organización.
 
@@ -374,13 +406,17 @@ Añade `OPENAI_API_KEY` en **Supabase > Edge Functions > Secrets**. No la añada
 
 Verifica que la key esté activa, tenga acceso a `gpt-5.6-luna` y que el proyecto de OpenAI tenga capacidad disponible. El historial registra el intento como fallido sin guardar detalles sensibles del proveedor; puedes volver a intentarlo desde el panel.
 
-### El estudiante recibe “Ya enviaste una respuesta”
+### El estudiante recibe “Ya respondiste este pulso”
 
-Es el comportamiento esperado para una segunda respuesta desde el mismo perfil y sesión. Para una demo con varios participantes utiliza navegadores o perfiles separados.
+Es el comportamiento esperado para un segundo envío desde el mismo perfil y pulso. El mismo navegador sí puede responder cuando el profesor abre la ronda siguiente. Para simular varios participantes en un solo pulso utiliza navegadores o perfiles separados.
+
+### El estudiante no detecta el pulso nuevo
+
+Comprueba que la migración de `session_pulses`, la versión actual de `get_public_session` y el frontend se desplegaron juntos. La pantalla pública vuelve a consultar cada cinco segundos; revisa en la respuesta que cambien `active_pulse_id` y `active_pulse_ordinal`. Una pestaña con un frontend anterior no comprende ese contrato y debe recargarse después del despliegue.
 
 ### El estudiante recibe un error de política o la sesión aparece cerrada
 
-Comprueba en el panel docente que la sesión siga activa y que `submit-response` esté desplegada con `verify_jwt=false`. La función y la RPC rechazan sesiones finalizadas aunque alguien conserve una pestaña antigua abierta.
+Comprueba en el panel docente que la sesión y el pulso mostrado sigan activos y que `submit-response` esté desplegada con `verify_jwt=false`. La función distingue una sesión finalizada, un pulso ya cerrado y la ausencia de pulso activo; en todos esos casos rechaza una pestaña antigua en lugar de reasignar la respuesta a otra ronda.
 
 ### Aparece “Envío seguro no disponible”
 
@@ -398,15 +434,15 @@ No uses esa dirección de ejemplo literalmente; reemplázala por la IP local rea
 
 ### El seed no crea la sesión `AULA24`
 
-Crea primero un usuario mediante Supabase Auth. Si hay varios, la sesión pertenece al más antiguo. Revisa también los avisos del SQL Editor por una posible colisión previa del código o del identificador de demo.
+Crea primero un usuario mediante Supabase Auth y aplica todas las migraciones, incluida la que crea `public.session_pulses`. Si hay varios usuarios, la sesión pertenece al más antiguo. Comprueba que `AULA24` tenga un pulso con `ordinal = 1`; el seed no inventa uno si el trigger no se ejecutó. Revisa también los avisos del SQL Editor por una posible colisión previa del código o del identificador de demo.
 
 ## Guion corto de demostración
 
 1. El profesor entra a ClassSignal y crea un curso.
 2. Desde el curso inicia una clase en menos de un minuto.
 3. Proyecta el QR y el código corto.
-4. Un estudiante responde desde su teléfono sin registrarse.
-5. El panel cambia en vivo y muestra la duda junto al nuevo porcentaje.
-6. El profesor activa **Compartir dudas** y el estudiante ve el muro anónimo desde el mismo enlace; una duda moderada desaparece en la siguiente actualización.
-7. El profesor pulsa **Analizar sesión** y obtiene un mapa de confusión con evidencia y acciones sugeridas.
-8. El profesor finaliza la sesión: se bloquean nuevas respuestas y la RPC pública deja de mostrar el muro.
+4. Un estudiante responde Pulso 1 desde su teléfono sin registrarse.
+5. El panel cambia en vivo; el profesor comparte dudas y pulsa **Analizar pulso** para orientar una explicación breve.
+6. El profesor abre Pulso 2. El código y el QR no cambian, el muro comienza oculto y el mismo estudiante puede responder otra vez.
+7. El panel muestra la distribución de Pulso 2 y el cambio en puntos porcentuales frente a Pulso 1; muro, proyector y análisis permanecen acotados a la ronda seleccionada.
+8. El profesor finaliza la clase: se cierra el pulso activo, se bloquean nuevas respuestas y la RPC pública deja de mostrar el muro.

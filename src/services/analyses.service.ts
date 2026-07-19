@@ -20,11 +20,15 @@ export class AnalysisInvocationError extends Error {
   }
 }
 
-export async function getSessionAnalyses(sessionId: string) {
+export async function getSessionAnalyses(
+  sessionId: string,
+  pulseId: string,
+) {
   const { data, error } = await getTeacherSupabase()
     .from('session_analyses')
     .select('*')
     .eq('session_id', sessionId)
+    .eq('pulse_id', pulseId)
     .order('created_at', { ascending: false })
     .limit(20)
 
@@ -65,10 +69,10 @@ async function readFunctionError(error: unknown) {
   }
 }
 
-export async function analyzeSession(sessionId: string) {
+export async function analyzeSession(sessionId: string, pulseId: string) {
   const { data, error } = await getTeacherSupabase().functions.invoke(
     'analyze-session',
-    { body: { sessionId } },
+    { body: { sessionId, pulseId } },
   )
 
   if (error) {

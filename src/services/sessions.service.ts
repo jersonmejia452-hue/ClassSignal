@@ -76,30 +76,13 @@ export async function createSession(
 }
 
 export async function setSessionActive(sessionId: string, isActive: boolean) {
-  const { data, error } = await getTeacherSupabase()
-    .from('sessions')
-    .update({
-      is_active: isActive,
-      ended_at: isActive ? null : new Date().toISOString(),
-    })
-    .eq('id', sessionId)
-    .select('*')
-    .single()
-
-  if (error) throw error
-  return data as ClassSession
-}
-
-export async function setSessionQuestionsVisible(
-  sessionId: string,
-  questionsVisibleToStudents: boolean,
-) {
-  const { data, error } = await getTeacherSupabase()
-    .from('sessions')
-    .update({ questions_visible_to_students: questionsVisibleToStudents })
-    .eq('id', sessionId)
-    .select('*')
-    .single()
+  const { data, error } = await getTeacherSupabase().rpc(
+    'set_session_active',
+    {
+      p_session_id: sessionId,
+      p_is_active: isActive,
+    },
+  )
 
   if (error) throw error
   return data as ClassSession
@@ -112,5 +95,22 @@ export async function getPublicSession(code: string) {
     .maybeSingle()
 
   if (error) throw error
-  return data as PublicClassSession | null
+  if (!data) return null
+
+  const candidate = data as Partial<PublicClassSession>
+  return {
+    ...candidate,
+    active_pulse_id:
+      typeof candidate.active_pulse_id === 'string'
+        ? candidate.active_pulse_id
+        : null,
+    active_pulse_ordinal:
+      typeof candidate.active_pulse_ordinal === 'number'
+        ? candidate.active_pulse_ordinal
+        : null,
+    active_pulse_started_at:
+      typeof candidate.active_pulse_started_at === 'string'
+        ? candidate.active_pulse_started_at
+        : null,
+  } as PublicClassSession
 }

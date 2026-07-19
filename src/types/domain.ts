@@ -17,6 +17,16 @@ export interface ClassSession {
   ended_at: string | null
 }
 
+export interface SessionPulse {
+  id: string
+  session_id: string
+  ordinal: number
+  is_active: boolean
+  questions_visible_to_students: boolean
+  started_at: string
+  ended_at: string | null
+}
+
 export interface Course {
   id: string
   professor_id: string
@@ -51,11 +61,15 @@ export interface PublicClassSession {
   subject: string
   topic: string
   is_active: boolean
+  active_pulse_id: string | null
+  active_pulse_ordinal: number | null
+  active_pulse_started_at: string | null
 }
 
 export interface StudentResponse {
   id: string
   session_id: string
+  pulse_id: string
   anonymous_id: string
   status: UnderstandingStatus
   question_text: string | null
@@ -70,6 +84,7 @@ export interface PublicSessionQuestion {
 
 export interface QuestionWallPayload {
   visible: boolean
+  pulse_id: string
   questions: PublicSessionQuestion[]
 }
 
@@ -82,6 +97,7 @@ export interface SessionDraft {
 
 export interface ResponseDraft {
   sessionId: string
+  pulseId: string
   anonymousId: string
   status: UnderstandingStatus
   questionText?: string
@@ -136,6 +152,7 @@ export interface ConfusionMap {
 export interface SessionAnalysis {
   id: string
   session_id: string
+  pulse_id: string
   professor_id: string
   status: AnalysisStatus
   model: string

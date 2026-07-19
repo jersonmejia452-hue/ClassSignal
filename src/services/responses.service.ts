@@ -1,6 +1,7 @@
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 import {
+  responseDraftSchema,
   responseSubmissionErrorSchema,
   responseSubmissionSecuritySchema,
   responseSubmissionSchema,
@@ -12,6 +13,10 @@ import type {
 } from '../types/domain'
 import { getPublicSupabase, getTeacherSupabase } from './supabase'
 
+const responsePageSize = 1000
+const maximumSessionResponses = 3000
+const maximumPulseResponses = 500
+
 export class ResponseSubmissionError extends Error {
   constructor(
     message: string,
@@ -22,15 +27,55 @@ export class ResponseSubmissionError extends Error {
   }
 }
 
-export async function getSessionResponses(sessionId: string) {
-  const { data, error } = await getTeacherSupabase()
-    .from('responses')
-    .select('*')
-    .eq('session_id', sessionId)
-    .order('created_at', { ascending: false })
+function sortNewestFirst(responses: StudentResponse[]) {
+  return responses.sort((first, second) => {
+    const timeDifference = Date.parse(second.created_at) - Date.parse(first.created_at)
+    return timeDifference || second.id.localeCompare(first.id)
+  })
+}
 
-  if (error) throw error
-  return (data ?? []) as StudentResponse[]
+export async function getSessionResponses(
+  sessionId: string,
+  pulseId?: string,
+) {
+  const supabase = getTeacherSupabase()
+
+  if (pulseId) {
+    const { data, error } = await supabase
+      .from('responses')
+      .select('*')
+      .eq('session_id', sessionId)
+      .eq('pulse_id', pulseId)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(maximumPulseResponses)
+
+    if (error) throw error
+    return sortNewestFirst((data ?? []) as StudentResponse[])
+  }
+
+  const byId = new Map<string, StudentResponse>()
+  for (let offset = 0; offset < maximumSessionResponses; offset += responsePageSize) {
+    const lastIndex = Math.min(
+      offset + responsePageSize - 1,
+      maximumSessionResponses - 1,
+    )
+    const { data, error } = await supabase
+      .from('responses')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(offset, lastIndex)
+
+    if (error) throw error
+
+    const page = (data ?? []) as StudentResponse[]
+    page.forEach((response) => byId.set(response.id, response))
+    if (page.length < lastIndex - offset + 1) break
+  }
+
+  return sortNewestFirst(Array.from(byId.values()))
 }
 
 export async function setResponseStudentVisibility(
@@ -105,13 +150,22 @@ export async function submitStudentResponse(
   values: ResponseDraft,
   turnstileToken: string,
 ) {
+  const parsedDraft = responseDraftSchema.safeParse(values)
+  if (!parsedDraft.success) {
+    throw new ResponseSubmissionError(
+      'La respuesta enviada no es valida.',
+      'invalid_submission',
+    )
+  }
+
   const { data, error } = await getPublicSupabase().functions.invoke(
     'submit-response',
     { body: {
-      sessionId: values.sessionId,
-      anonymousId: values.anonymousId,
-      status: values.status,
-      questionText: values.questionText?.trim() || null,
+      sessionId: parsedDraft.data.sessionId,
+      pulseId: parsedDraft.data.pulseId,
+      anonymousId: parsedDraft.data.anonymousId,
+      status: parsedDraft.data.status,
+      questionText: parsedDraft.data.questionText || null,
       turnstileToken,
     } },
   )
@@ -137,9 +191,10 @@ export function subscribeToSessionResponses(
   sessionId: string,
   onInsert: (response: StudentResponse) => void,
   onStatus: (status: string) => void,
+  pulseId?: string,
 ) {
   return getTeacherSupabase()
-    .channel(`responses:${sessionId}`)
+    .channel(`responses:${sessionId}:${pulseId ?? 'all'}`)
     .on(
       'postgres_changes',
       {
@@ -148,7 +203,12 @@ export function subscribeToSessionResponses(
         table: 'responses',
         filter: `session_id=eq.${sessionId}`,
       },
-      (payload) => onInsert(payload.new as StudentResponse),
+      (payload) => {
+        const response = payload.new as StudentResponse
+        if (response.session_id !== sessionId) return
+        if (pulseId && response.pulse_id !== pulseId) return
+        onInsert(response)
+      },
     )
     .subscribe((status) => onStatus(status))
 }

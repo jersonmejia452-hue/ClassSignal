@@ -13,6 +13,12 @@ export const responseSchema = z.object({
     .optional(),
 })
 
+export const responseDraftSchema = responseSchema.extend({
+  sessionId: z.string().uuid(),
+  pulseId: z.string().uuid(),
+  anonymousId: z.string().uuid(),
+})
+
 export const responseSubmissionSchema = z.object({
   accepted: z.literal(true),
 })

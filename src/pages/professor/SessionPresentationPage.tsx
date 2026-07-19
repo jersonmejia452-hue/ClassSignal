@@ -14,6 +14,8 @@ import {
 import { QRCodeSVG } from 'qrcode.react'
 import { Link, useParams } from 'react-router-dom'
 
+import { PulseStatusBadge } from '../../components/pulses/PulseStatusBadge'
+import { useSessionPulses } from '../../hooks/useSessionPulses'
 import { useSessionResponses } from '../../hooks/useSessionResponses'
 import { cn } from '../../lib/cn'
 import { getPublicAppOrigin } from '../../lib/env'
@@ -66,6 +68,14 @@ export function SessionPresentationPage() {
     error: responsesError,
     realtimeStatus,
   } = useSessionResponses(session?.id)
+
+  const {
+    pulses,
+    activePulse,
+    isLoading: isLoadingPulses,
+    error: pulsesError,
+    realtimeStatus: pulsesRealtimeStatus,
+  } = useSessionPulses(session?.id)
 
   useEffect(() => {
     let isMounted = true
@@ -122,12 +132,18 @@ export function SessionPresentationPage() {
   }
 
   const publicUrl = `${getPublicAppOrigin()}/s/${session.code}`
-  const summary = buildStatusSummary(responses)
+  const displayPulse = activePulse ?? pulses[pulses.length - 1] ?? null
+  const displayResponses = displayPulse
+    ? responses.filter((response) => response.pulse_id === displayPulse.id)
+    : []
+  const summary = buildStatusSummary(displayResponses)
   const isRealtimeConnected = realtimeStatus === 'SUBSCRIBED'
-  const hasRealtimeError = ['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(
-    realtimeStatus,
+    && pulsesRealtimeStatus === 'SUBSCRIBED'
+  const hasRealtimeError = [realtimeStatus, pulsesRealtimeStatus].some(
+    (status) => ['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status),
   )
-  const latestResponseAt = responses[0]?.created_at
+  const latestResponseAt = displayResponses[0]?.created_at
+  const isShowingLastPulse = Boolean(displayPulse && !activePulse)
 
   return (
     <main className="fixed inset-0 z-[100] overflow-y-auto bg-[#061623] text-white">
@@ -189,6 +205,13 @@ export function SessionPresentationPage() {
                 />
                 {session.is_active ? 'Clase activa' : 'Clase finalizada'}
               </span>
+              {displayPulse && (
+                <PulseStatusBadge
+                  inverse
+                  isActive={Boolean(activePulse)}
+                  ordinal={displayPulse.ordinal}
+                />
+              )}
               <span
                 className={cn(
                   'inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-xs font-extrabold sm:text-sm',
@@ -220,10 +243,10 @@ export function SessionPresentationPage() {
             <section className="flex flex-col justify-center rounded-[1.75rem] border border-white/10 bg-white/[0.055] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.18)] backdrop-blur-sm sm:p-7 lg:p-6" aria-labelledby="join-title">
               <div className="mx-auto w-full max-w-[26rem] text-center">
                 <p className="text-xs font-extrabold tracking-[0.16em] text-[#87eadc] uppercase sm:text-sm">
-                  Únete a la señal
+                  {activePulse ? 'Únete a la señal' : 'Acceso de la clase'}
                 </p>
                 <p className="mt-2 text-2xl font-black tracking-[-0.04em] sm:text-3xl" id="join-title">
-                  Escanea para responder
+                  {activePulse ? 'Escanea para responder' : 'Conserva este acceso'}
                 </p>
 
                 <figure className="mx-auto mt-4 w-full max-w-[min(20rem,34vh)] rounded-[1.5rem] bg-white p-4 shadow-[0_20px_60px_rgba(0,0,0,0.28)] sm:p-5">
@@ -274,20 +297,24 @@ export function SessionPresentationPage() {
               <div className="mt-6 flex flex-wrap items-end justify-between gap-3 border-t border-white/10 pt-5 sm:mt-8 sm:pt-6">
                 <div>
                   <p className="text-xs font-extrabold tracking-[0.15em] text-[#87eadc] uppercase sm:text-sm">
-                    Pulso colectivo
+                    {displayPulse ? `Pulso ${displayPulse.ordinal}` : 'Pulso colectivo'}
                   </p>
                   <p className="mt-1 text-xl font-black tracking-tight sm:text-2xl lg:text-3xl">
-                    Comprensión en tiempo real
+                    {activePulse
+                      ? 'Comprensión en tiempo real'
+                      : displayPulse
+                        ? session.is_active ? 'Último pulso disponible' : 'Pulso final de la clase'
+                        : 'Esperando el primer pulso'}
                   </p>
                 </div>
 
                 <div className="text-right" aria-live="polite" aria-atomic="true">
                   <p className="flex items-center justify-end gap-2 text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">
                     <UsersRound className="size-6 text-blue-200 sm:size-7" aria-hidden="true" />
-                    {responses.length}
+                    {displayResponses.length}
                   </p>
                   <p className="mt-1 text-xs font-bold text-slate-400 sm:text-sm">
-                    {responses.length === 1 ? 'respuesta recibida' : 'respuestas recibidas'}
+                    {displayResponses.length === 1 ? 'señal recibida' : 'señales recibidas'}
                   </p>
                 </div>
               </div>
@@ -297,50 +324,87 @@ export function SessionPresentationPage() {
                   No pudimos actualizar ahora. Mostramos el último pulso disponible. {responsesError}
                 </div>
               )}
+              {pulsesError && (
+                <div className="mt-5 rounded-2xl border border-amber-300/20 bg-amber-300/10 p-3 text-sm font-semibold text-amber-100" role="alert">
+                  No pudimos comprobar si el docente abrió otro pulso. {pulsesError}
+                </div>
+              )}
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-3 lg:gap-4" aria-label="Resumen agregado de comprensión">
-                {summary.map((item) => {
-                  const presentation = statusPresentation[item.status]
-                  const Icon = presentation.icon
+              {isShowingLastPulse && displayPulse && (
+                <div className="mt-5 rounded-2xl border border-blue-300/20 bg-blue-300/10 p-4 text-sm font-semibold text-blue-100" role="status">
+                  {session.is_active
+                    ? `El pulso ${displayPulse.ordinal} está cerrado. Esperando que el docente abra el siguiente.`
+                    : `La clase finalizó. Mostramos los resultados del pulso ${displayPulse.ordinal}.`}
+                </div>
+              )}
 
-                  return (
-                    <article
-                      className={cn(
-                        'rounded-2xl border p-4 sm:p-5 lg:p-5',
-                        presentation.accent,
-                        presentation.glow,
-                      )}
-                      key={item.status}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <Icon className="size-6 shrink-0 sm:size-7" aria-hidden="true" />
-                        <span className="text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl lg:text-4xl">
-                          {item.percentage}%
-                        </span>
-                      </div>
-                      <h3 className="mt-4 text-sm font-extrabold text-white sm:text-base">
-                        {statusContent[item.status].label}
-                      </h3>
-                      <p className="mt-1 text-xs font-semibold text-current/80 sm:text-sm">
-                        {item.count} {item.count === 1 ? 'estudiante' : 'estudiantes'}
-                      </p>
-                      <div
-                        aria-label={`${statusContent[item.status].label}: ${item.percentage}%`}
-                        aria-valuemax={100}
-                        aria-valuemin={0}
-                        aria-valuenow={item.percentage}
-                        className="mt-4 h-2 overflow-hidden rounded-full bg-white/10"
-                        role="progressbar"
+              {!displayPulse && !isLoadingPulses && (
+                <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.06] p-6 text-center">
+                  <RadioTower className="mx-auto size-7 text-[#66e2d1]" aria-hidden="true" />
+                  <p className="mt-3 text-lg font-extrabold text-white">Aún no hay un pulso abierto</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">
+                    Conserva el código en pantalla. Las señales aparecerán cuando el docente inicie el primer pulso.
+                  </p>
+                </div>
+              )}
+
+              {activePulse && displayResponses.length === 0 && !isLoadingResponses && (
+                <div className="mt-5 rounded-2xl border border-teal-300/20 bg-teal-300/10 p-6 text-center" role="status">
+                  <RadioTower className="mx-auto size-7 animate-pulse text-[#66e2d1]" aria-hidden="true" />
+                  <p className="mt-3 text-lg font-extrabold text-white">
+                    Pulso {activePulse.ordinal} abierto
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-teal-100">
+                    Esperando las primeras señales del grupo.
+                  </p>
+                </div>
+              )}
+
+              {displayPulse && displayResponses.length > 0 && (
+                <div className="mt-5 grid gap-3 sm:grid-cols-3 lg:gap-4" aria-label="Resumen agregado de comprensión">
+                  {summary.map((item) => {
+                    const presentation = statusPresentation[item.status]
+                    const Icon = presentation.icon
+
+                    return (
+                      <article
+                        className={cn(
+                          'rounded-2xl border p-4 sm:p-5 lg:p-5',
+                          presentation.accent,
+                          presentation.glow,
+                        )}
+                        key={item.status}
                       >
+                        <div className="flex items-start justify-between gap-3">
+                          <Icon className="size-6 shrink-0 sm:size-7" aria-hidden="true" />
+                          <span className="text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl lg:text-4xl">
+                            {item.percentage}%
+                          </span>
+                        </div>
+                        <h3 className="mt-4 text-sm font-extrabold text-white sm:text-base">
+                          {statusContent[item.status].label}
+                        </h3>
+                        <p className="mt-1 text-xs font-semibold text-current/80 sm:text-sm">
+                          {item.count} {item.count === 1 ? 'señal' : 'señales'}
+                        </p>
                         <div
-                          className={cn('h-full rounded-full transition-[width] duration-500', presentation.bar)}
-                          style={{ width: `${item.percentage}%` }}
-                        />
-                      </div>
-                    </article>
-                  )
-                })}
-              </div>
+                          aria-label={`${statusContent[item.status].label}: ${item.percentage}%`}
+                          aria-valuemax={100}
+                          aria-valuemin={0}
+                          aria-valuenow={item.percentage}
+                          className="mt-4 h-2 overflow-hidden rounded-full bg-white/10"
+                          role="progressbar"
+                        >
+                          <div
+                            className={cn('h-full rounded-full transition-[width] duration-500', presentation.bar)}
+                            style={{ width: `${item.percentage}%` }}
+                          />
+                        </div>
+                      </article>
+                    )
+                  })}
+                </div>
+              )}
 
               <div className="mt-4 flex min-h-6 flex-wrap items-center justify-between gap-2 text-xs font-semibold text-slate-400 sm:mt-5 sm:text-sm">
                 <p>Solo mostramos datos agregados; ninguna respuesta individual aparece en pantalla.</p>
@@ -350,7 +414,7 @@ export function SessionPresentationPage() {
                     Última señal: {formatTime(latestResponseAt)}
                   </p>
                 )}
-                {isLoadingResponses && responses.length === 0 && (
+                {(isLoadingPulses || isLoadingResponses) && displayResponses.length === 0 && (
                   <p className="inline-flex items-center gap-2" role="status">
                     <RadioTower className="size-4 animate-pulse" aria-hidden="true" />
                     Preparando el pulso de la clase…

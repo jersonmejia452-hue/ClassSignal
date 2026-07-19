@@ -1,10 +1,7 @@
 import { withSupabase } from "@supabase/server";
 
 import type { Database, Json } from "./database.types.ts";
-import {
-  LUNA_PRICING_VERSION,
-  readLunaUsage,
-} from "./openai-usage.ts";
+import { LUNA_PRICING_VERSION, readLunaUsage } from "./openai-usage.ts";
 
 const MODEL = "gpt-5.6-luna";
 const PROMPT_VERSION = 1;
@@ -22,6 +19,12 @@ interface SessionRow {
   title: string;
   subject: string;
   topic: string;
+}
+
+interface SessionPulseRow {
+  id: string;
+  session_id: string;
+  ordinal: number;
 }
 
 interface ResponseRow {
@@ -258,6 +261,7 @@ function attachTelemetry(
 
 async function createSourceFingerprint(
   session: SessionRow,
+  pulse: SessionPulseRow,
   responses: SourceResponse[],
 ) {
   const source = JSON.stringify({
@@ -265,6 +269,10 @@ async function createSourceFingerprint(
       title: session.title,
       subject: session.subject,
       topic: session.topic,
+    },
+    pulse: {
+      id: pulse.id,
+      ordinal: pulse.ordinal,
     },
     responses,
   });
@@ -491,9 +499,10 @@ function extractOpenAIText(value: unknown) {
 async function requestConfusionMap(
   apiKey: string,
   session: SessionRow,
+  sessionPulse: SessionPulseRow,
   sourceResponses: SourceResponse[],
 ) {
-  const pulse = sourceResponses.reduce(
+  const pulseSummary = sourceResponses.reduce(
     (counts, response) => {
       counts[response.status] += 1;
       return counts;
@@ -535,8 +544,9 @@ async function requestConfusionMap(
                 title: session.title,
                 subject: session.subject,
                 topic: session.topic,
+                pulse_ordinal: sessionPulse.ordinal,
               },
-              pulse,
+              pulse: pulseSummary,
               responses: sourceResponses,
             }),
           },
@@ -690,11 +700,19 @@ const analyzeSession = withSupabase<Database>(
     try {
       const body: unknown = await request.json();
       const sessionId = isRecord(body) ? body.sessionId : null;
+      const pulseId = isRecord(body) ? body.pulseId : null;
       if (!isUuid(sessionId)) {
         throw new PublicFunctionError(
           400,
           "invalid_session_id",
           "La sesión solicitada no es válida.",
+        );
+      }
+      if (!isUuid(pulseId)) {
+        throw new PublicFunctionError(
+          400,
+          "invalid_pulse_id",
+          "El pulso solicitado no es válido.",
         );
       }
 
@@ -713,11 +731,28 @@ const analyzeSession = withSupabase<Database>(
         );
       }
 
+      const { data: pulse, error: pulseError } = await context.supabase
+        .from("session_pulses")
+        .select("id, session_id, ordinal")
+        .eq("id", pulseId)
+        .eq("session_id", sessionId)
+        .maybeSingle();
+
+      if (pulseError) throw pulseError;
+      if (!pulse) {
+        throw new PublicFunctionError(
+          404,
+          "pulse_not_found",
+          "No encontramos este pulso o no te pertenece.",
+        );
+      }
+
       const { data: responseData, error: responsesError } = await context
         .supabase
         .from("responses")
         .select("id, status, question_text, created_at")
         .eq("session_id", sessionId)
+        .eq("pulse_id", pulseId)
         .order("created_at", { ascending: false })
         .order("id", { ascending: false })
         .limit(MAX_RESPONSES);
@@ -737,7 +772,7 @@ const analyzeSession = withSupabase<Database>(
         throw new PublicFunctionError(
           422,
           "no_responses",
-          "Necesitas al menos una respuesta estudiantil para generar el mapa.",
+          "Necesitas al menos una respuesta estudiantil en este pulso para generar el mapa.",
         );
       }
 
@@ -752,6 +787,7 @@ const analyzeSession = withSupabase<Database>(
       const sourceLatestResponseAt = responses[0].created_at;
       const sourceFingerprint = await createSourceFingerprint(
         session as SessionRow,
+        pulse as SessionPulseRow,
         sourceResponses,
       );
 
@@ -759,6 +795,7 @@ const analyzeSession = withSupabase<Database>(
         .from("session_analyses")
         .select("*")
         .eq("session_id", sessionId)
+        .eq("pulse_id", pulseId)
         .eq("status", "completed")
         .eq("model", MODEL)
         .eq("prompt_version", PROMPT_VERSION)
@@ -783,7 +820,7 @@ const analyzeSession = withSupabase<Database>(
         .supabaseAdmin
         .from("session_analyses")
         .select("id, created_at")
-        .eq("session_id", sessionId)
+        .eq("pulse_id", pulseId)
         .eq("status", "pending")
         .maybeSingle();
 
@@ -816,6 +853,7 @@ const analyzeSession = withSupabase<Database>(
         .supabaseAdmin
         .rpc("create_session_analysis", {
           p_session_id: sessionId,
+          p_pulse_id: pulseId,
           p_professor_id: professorId,
           p_model: MODEL,
           p_prompt_version: PROMPT_VERSION,
@@ -826,6 +864,31 @@ const analyzeSession = withSupabase<Database>(
         });
 
       if (createError) {
+        if (getErrorCode(createError) === "23505") {
+          const { data: racedAnalysis, error: racedCacheError } = await context
+            .supabaseAdmin
+            .from("session_analyses")
+            .select("*")
+            .eq("session_id", sessionId)
+            .eq("pulse_id", pulseId)
+            .eq("status", "completed")
+            .eq("model", MODEL)
+            .eq("prompt_version", PROMPT_VERSION)
+            .eq("source_fingerprint", sourceFingerprint)
+            .maybeSingle();
+
+          if (racedCacheError) throw racedCacheError;
+          if (racedAnalysis) {
+            return jsonResponse({ analysis: racedAnalysis, cached: true });
+          }
+
+          throw new PublicFunctionError(
+            409,
+            "analysis_in_progress",
+            "Ya hay un análisis en curso para este pulso.",
+          );
+        }
+
         if (
           getErrorCode(createError) === "P0001" &&
           [
@@ -866,6 +929,7 @@ const analyzeSession = withSupabase<Database>(
       const { result, telemetry } = await requestConfusionMap(
         openAIKey,
         session as SessionRow,
+        pulse as SessionPulseRow,
         sourceResponses,
       );
       analysisTelemetry = telemetry;

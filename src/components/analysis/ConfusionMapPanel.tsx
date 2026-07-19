@@ -99,7 +99,7 @@ export function ConfusionMapPanel({
     ? 'Esperando respuestas'
     : map
       ? (isOutdated ? 'Actualizar mapa' : 'Mapa actualizado')
-      : 'Analizar sesión'
+      : 'Analizar pulso'
   const previousRuns = analysis
     ? analyses.filter((item) => item.id !== analysis.id)
     : analyses
@@ -143,7 +143,7 @@ export function ConfusionMapPanel({
         )}
         {isOutdated && !isBusy && (
           <p className="mt-5 rounded-xl border border-amber-700/60 bg-amber-950/40 px-4 py-3 text-sm text-amber-100">
-            Llegaron respuestas nuevas. El mapa visible corresponde a una versión anterior de la sesión.
+            Llegaron respuestas nuevas. El mapa visible corresponde a una versión anterior de este pulso.
           </p>
         )}
         {isBusy && map && (

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  responseDraftSchema,
   responseSchema,
   responseSubmissionSecuritySchema,
 } from './response'
@@ -21,6 +22,31 @@ describe('responseSchema', () => {
     expect(responseSchema.safeParse({
       status: 'lost',
       questionText: 'a'.repeat(1001),
+    }).success).toBe(false)
+  })
+})
+
+describe('responseDraftSchema', () => {
+  it('exige identificadores válidos de sesión, pulso y navegador', () => {
+    const draft = {
+      sessionId: '00000000-0000-4000-8000-000000000001',
+      pulseId: '00000000-0000-4000-8000-000000000002',
+      anonymousId: '00000000-0000-4000-8000-000000000003',
+      status: 'understood',
+      questionText: '  Ya lo entendí.  ',
+    }
+
+    expect(responseDraftSchema.parse(draft)).toMatchObject({
+      ...draft,
+      questionText: 'Ya lo entendí.',
+    })
+    expect(responseDraftSchema.safeParse({
+      ...draft,
+      pulseId: 'not-a-uuid',
+    }).success).toBe(false)
+    expect(responseDraftSchema.safeParse({
+      ...draft,
+      pulseId: undefined,
     }).success).toBe(false)
   })
 })

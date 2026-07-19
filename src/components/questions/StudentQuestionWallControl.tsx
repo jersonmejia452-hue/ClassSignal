@@ -6,6 +6,7 @@ import { Alert } from '../ui/Alert'
 import { Button } from '../ui/Button'
 
 interface StudentQuestionWallControlProps {
+  disabledReason?: string
   error?: string | null
   isActive: boolean
   isUpdating?: boolean
@@ -16,6 +17,7 @@ interface StudentQuestionWallControlProps {
 }
 
 export function StudentQuestionWallControl({
+  disabledReason,
   error = null,
   isActive,
   isUpdating = false,
@@ -28,6 +30,7 @@ export function StudentQuestionWallControl({
   const visibleQuestionCount = questions.filter(
     (response) => response.is_visible_to_students,
   ).length
+  const isDisabled = !isActive || Boolean(disabledReason)
 
   return (
     <section
@@ -66,9 +69,11 @@ export function StudentQuestionWallControl({
 
         <Button
           aria-checked={isVisible}
-          aria-label="Mostrar el muro de dudas a los estudiantes"
+          aria-label={isVisible
+            ? 'Ocultar el muro de dudas a los estudiantes'
+            : 'Mostrar el muro de dudas a los estudiantes'}
           className="min-w-44"
-          disabled={!isActive}
+          disabled={isDisabled}
           isLoading={isUpdating}
           onClick={() => void onToggle()}
           role="switch"
@@ -83,9 +88,11 @@ export function StudentQuestionWallControl({
         </Button>
       </div>
 
-      {!isActive && (
+      {isDisabled && (
         <div className="px-5 pb-5 sm:px-6 sm:pb-6">
-          <Alert>Reactiva la clase para cambiar quién puede ver sus dudas.</Alert>
+          <Alert>
+            {disabledReason || 'Reactiva la clase para cambiar quién puede ver sus dudas.'}
+          </Alert>
         </div>
       )}
 

@@ -11,6 +11,7 @@ function response(status: UnderstandingStatus, index: number): StudentResponse {
   return {
     id: `response-${index}`,
     session_id: 'session-1',
+    pulse_id: '00000000-0000-4000-8000-000000000001',
     anonymous_id: `anonymous-${index}`,
     status,
     question_text: null,

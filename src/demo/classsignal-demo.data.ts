@@ -3,6 +3,7 @@ import type {
   Course,
   CoursePulsePoint,
   SessionAnalysis,
+  SessionPulse,
   StudentResponse,
   UnderstandingStatus,
 } from '../types/domain'
@@ -28,13 +29,39 @@ export const DEMO_SESSION: ClassSession = {
   topic:
     'Vectores, magnitud, dirección, componentes y una primera aproximación al producto punto.',
   is_active: true,
-  questions_visible_to_students: true,
+  questions_visible_to_students: false,
   created_at: '2026-06-23T16:00:00.000Z',
   updated_at: '2026-06-23T16:00:00.000Z',
   ended_at: null,
 }
 
+export const DEMO_PULSE_ONE: SessionPulse = {
+  id: '00000000-0000-4000-8000-000000000031',
+  session_id: DEMO_SESSION.id,
+  ordinal: 1,
+  is_active: false,
+  questions_visible_to_students: false,
+  started_at: '2026-06-23T16:00:00.000Z',
+  ended_at: '2026-06-23T16:35:00.000Z',
+}
+
+export const DEMO_PULSE_TWO: SessionPulse = {
+  id: '00000000-0000-4000-8000-000000000032',
+  session_id: DEMO_SESSION.id,
+  ordinal: 2,
+  is_active: true,
+  questions_visible_to_students: false,
+  started_at: '2026-06-23T16:36:00.000Z',
+  ended_at: null,
+}
+
+export const DEMO_PULSES: readonly SessionPulse[] = [
+  DEMO_PULSE_ONE,
+  DEMO_PULSE_TWO,
+]
+
 export const DEMO_SIGNAL_TIMESTAMP = '2026-06-23T16:30:00.000Z'
+export const DEMO_SECOND_SIGNAL_TIMESTAMP = '2026-06-23T16:43:00.000Z'
 
 export const DEMO_BASE_RESPONSES: readonly StudentResponse[] = [
   demoResponse(
@@ -165,6 +192,11 @@ export const DEMO_DEFAULT_SIGNAL: DemoSignalDraft = {
     '¿Cómo se conectan las componentes con la dirección del vector?',
 }
 
+export const DEMO_SECOND_PULSE_DEFAULT_SIGNAL: DemoSignalDraft = {
+  status: 'understood',
+  questionText: null,
+}
+
 export function createDemoResponses({
   status,
   questionText,
@@ -176,6 +208,7 @@ export function createDemoResponses({
     {
       id: '00000000-0000-4000-8000-000000000120',
       session_id: DEMO_SESSION.id,
+      pulse_id: DEMO_PULSE_ONE.id,
       anonymous_id: '10000000-0000-4000-8000-000000000120',
       status,
       question_text: normalizedQuestion,
@@ -186,9 +219,67 @@ export function createDemoResponses({
   ]
 }
 
+const DEMO_SECOND_PULSE_BLUEPRINT = [
+  ['understood', null],
+  ['understood', 'Ahora veo que las componentes describen el desplazamiento en cada eje.'],
+  ['understood', null],
+  ['understood', 'El triángulo con (3, 4) aclaró de dónde sale la magnitud.'],
+  ['understood', null],
+  ['understood', null],
+  ['understood', 'Cambiar el signo modifica la dirección, no la longitud.'],
+  ['understood', null],
+  ['understood', null],
+  ['understood', 'Ya distingo un punto de un vector por el contexto.'],
+  ['understood', null],
+  ['understood', null],
+  ['understood', 'La comparación visual me ayudó a conectar flecha y componentes.'],
+  ['question', 'Todavía dudo cuándo conviene normalizar un vector.'],
+  ['question', '¿El sentido cambia siempre que una componente cambia de signo?'],
+  ['question', '¿Podemos repetir el ejemplo en tres dimensiones?'],
+  ['question', null],
+  ['lost', 'Aún confundo la dirección del vector con el ángulo medido desde el eje.'],
+  ['lost', null],
+] as const satisfies readonly (readonly [UnderstandingStatus, string | null])[]
+
+export const DEMO_SECOND_PULSE_BASE_RESPONSES: readonly StudentResponse[] =
+  DEMO_SECOND_PULSE_BLUEPRINT.map(([responseStatus, responseQuestion], index) =>
+    demoResponse(
+      index + 21,
+      responseStatus,
+      responseQuestion,
+      new Date(
+        Date.parse('2026-06-23T16:42:30.000Z') - index * 20_000,
+      ).toISOString(),
+      DEMO_PULSE_TWO.id,
+    ),
+  )
+
+export function createDemoSecondPulseResponses({
+  status,
+  questionText,
+  createdAt = DEMO_SECOND_SIGNAL_TIMESTAMP,
+}: DemoSignalDraft): StudentResponse[] {
+  const normalizedQuestion = questionText?.trim() || null
+
+  return [
+    {
+      id: '00000000-0000-4000-8000-000000000220',
+      session_id: DEMO_SESSION.id,
+      pulse_id: DEMO_PULSE_TWO.id,
+      anonymous_id: '20000000-0000-4000-8000-000000000220',
+      status,
+      question_text: normalizedQuestion,
+      is_visible_to_students: Boolean(normalizedQuestion),
+      created_at: createdAt,
+    },
+    ...DEMO_SECOND_PULSE_BASE_RESPONSES,
+  ]
+}
+
 export const DEMO_ANALYSIS: SessionAnalysis = {
   id: '00000000-0000-4000-8000-000000000210',
   session_id: DEMO_SESSION.id,
+  pulse_id: DEMO_PULSE_ONE.id,
   professor_id: DEMO_COURSE.professor_id,
   status: 'completed',
   model: 'gpt-5.6-luna · resultado de ejemplo',
@@ -280,9 +371,9 @@ export const DEMO_PULSE_HISTORY: readonly CoursePulsePoint[] = [
     created_at: '2026-06-23T16:00:00.000Z',
     is_active: false,
     response_count: 20,
-    understood_count: 7,
-    question_count: 8,
-    lost_count: 5,
+    understood_count: 14,
+    question_count: 4,
+    lost_count: 2,
   },
   {
     session_id: '00000000-0000-4000-8000-000000000012',
@@ -290,9 +381,9 @@ export const DEMO_PULSE_HISTORY: readonly CoursePulsePoint[] = [
     created_at: '2026-06-30T16:00:00.000Z',
     is_active: false,
     response_count: 20,
-    understood_count: 9,
-    question_count: 7,
-    lost_count: 4,
+    understood_count: 15,
+    question_count: 3,
+    lost_count: 2,
   },
   {
     session_id: '00000000-0000-4000-8000-000000000013',
@@ -300,9 +391,9 @@ export const DEMO_PULSE_HISTORY: readonly CoursePulsePoint[] = [
     created_at: '2026-07-07T16:00:00.000Z',
     is_active: false,
     response_count: 20,
-    understood_count: 11,
-    question_count: 6,
-    lost_count: 3,
+    understood_count: 16,
+    question_count: 3,
+    lost_count: 1,
   },
   {
     session_id: '00000000-0000-4000-8000-000000000014',
@@ -310,9 +401,9 @@ export const DEMO_PULSE_HISTORY: readonly CoursePulsePoint[] = [
     created_at: '2026-07-14T16:00:00.000Z',
     is_active: false,
     response_count: 20,
-    understood_count: 14,
-    question_count: 4,
-    lost_count: 2,
+    understood_count: 17,
+    question_count: 2,
+    lost_count: 1,
   },
 ]
 
@@ -321,12 +412,14 @@ function demoResponse(
   status: UnderstandingStatus,
   questionText: string | null,
   createdAt: string,
+  pulseId = DEMO_PULSE_ONE.id,
 ): StudentResponse {
   const suffix = index.toString().padStart(3, '0')
 
   return {
     id: `00000000-0000-4000-8000-000000000${suffix}`,
     session_id: DEMO_SESSION.id,
+    pulse_id: pulseId,
     anonymous_id: `10000000-0000-4000-8000-000000000${suffix}`,
     status,
     question_text: questionText,

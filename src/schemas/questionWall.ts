@@ -7,6 +7,7 @@ export const publicSessionQuestionSchema = z.object({
 
 export const questionWallPayloadSchema = z.object({
   visible: z.boolean(),
+  pulse_id: z.string().uuid(),
   questions: z.array(publicSessionQuestionSchema).max(50),
 }).strict().refine(
   ({ visible, questions }) => visible || questions.length === 0,

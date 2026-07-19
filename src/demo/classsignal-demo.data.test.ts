@@ -3,10 +3,17 @@ import { describe, expect, it } from 'vitest'
 import { buildStatusSummary } from '../lib/format'
 import {
   createDemoResponses,
+  createDemoSecondPulseResponses,
   DEMO_ANALYSIS,
   DEMO_BASE_RESPONSES,
   DEMO_DEFAULT_SIGNAL,
+  DEMO_PULSES,
+  DEMO_PULSE_ONE,
+  DEMO_PULSE_TWO,
   DEMO_PULSE_HISTORY,
+  DEMO_SECOND_PULSE_BASE_RESPONSES,
+  DEMO_SECOND_PULSE_DEFAULT_SIGNAL,
+  DEMO_SECOND_SIGNAL_TIMESTAMP,
   DEMO_SESSION,
   DEMO_SIGNAL_TIMESTAMP,
 } from './classsignal-demo.data'
@@ -19,6 +26,7 @@ describe('datos de la demostración de ClassSignal', () => {
 
     expect(responses).toHaveLength(20)
     expect(responses[0]).toMatchObject({
+      pulse_id: DEMO_PULSE_ONE.id,
       status: 'question',
       question_text:
         '¿Cómo se conectan las componentes con la dirección del vector?',
@@ -29,6 +37,49 @@ describe('datos de la demostración de ClassSignal', () => {
       { status: 'question', count: 8, percentage: 40 },
       { status: 'lost', count: 5, percentage: 25 },
     ])
+  })
+
+  it('simula un segundo pulso con una mejora agregada antes/después', () => {
+    const firstPulse = createDemoResponses(DEMO_DEFAULT_SIGNAL)
+    const secondPulse = createDemoSecondPulseResponses(
+      DEMO_SECOND_PULSE_DEFAULT_SIGNAL,
+    )
+
+    expect(DEMO_SECOND_PULSE_BASE_RESPONSES).toHaveLength(19)
+    expect(secondPulse).toHaveLength(20)
+    expect(secondPulse[0]).toMatchObject({
+      pulse_id: DEMO_PULSE_TWO.id,
+      status: 'understood',
+      question_text: null,
+      created_at: DEMO_SECOND_SIGNAL_TIMESTAMP,
+    })
+    expect(buildStatusSummary(secondPulse)).toEqual([
+      { status: 'understood', count: 14, percentage: 70 },
+      { status: 'question', count: 4, percentage: 20 },
+      { status: 'lost', count: 2, percentage: 10 },
+    ])
+
+    const firstSummary = buildStatusSummary(firstPulse)
+    const secondSummary = buildStatusSummary(secondPulse)
+    expect(
+      secondSummary.map((item, index) =>
+        item.percentage - firstSummary[index]!.percentage,
+      ),
+    ).toEqual([35, -20, -15])
+  })
+
+  it('mantiene una sola ronda activa y ambas pertenecen a la misma clase', () => {
+    expect(DEMO_PULSES).toHaveLength(2)
+    expect(DEMO_PULSES.map((pulse) => pulse.ordinal)).toEqual([1, 2])
+    expect(
+      DEMO_PULSES.every((pulse) => pulse.session_id === DEMO_SESSION.id),
+    ).toBe(true)
+    expect(DEMO_PULSES.filter((pulse) => pulse.is_active)).toEqual([
+      DEMO_PULSE_TWO,
+    ])
+    expect(DEMO_PULSE_ONE.ended_at).not.toBeNull()
+    expect(DEMO_PULSE_TWO.ended_at).toBeNull()
+    expect(DEMO_PULSE_TWO.questions_visible_to_students).toBe(false)
   })
 
   it('respeta la señal elegida y normaliza su duda opcional', () => {
@@ -60,6 +111,53 @@ describe('datos de la demostración de ClassSignal', () => {
     expect(
       responses.every((response) => response.session_id === DEMO_SESSION.id),
     ).toBe(true)
+    expect(
+      responses.every((response) => response.pulse_id === DEMO_PULSE_ONE.id),
+    ).toBe(true)
+
+    const secondPulseResponses = createDemoSecondPulseResponses(
+      DEMO_SECOND_PULSE_DEFAULT_SIGNAL,
+    )
+    expect(
+      new Set([
+        ...responses.map((response) => response.id),
+        ...secondPulseResponses.map((response) => response.id),
+      ]).size,
+    ).toBe(40)
+    expect(
+      secondPulseResponses.every(
+        (response) => response.pulse_id === DEMO_PULSE_TWO.id,
+      ),
+    ).toBe(true)
+    expect(
+      new Set([
+        ...responses.map((response) => response.anonymous_id),
+        ...secondPulseResponses.map((response) => response.anonymous_id),
+      ]).size,
+    ).toBe(40)
+  })
+
+  it('mantiene las respuestas dentro de la ventana temporal de cada pulso', () => {
+    const firstPulseResponses = createDemoResponses(DEMO_DEFAULT_SIGNAL)
+    const secondPulseResponses = createDemoSecondPulseResponses({
+      status: 'understood',
+      questionText: '   ',
+    })
+
+    expect(secondPulseResponses[0]?.question_text).toBeNull()
+    expect(
+      firstPulseResponses.every((response) => {
+        const createdAt = Date.parse(response.created_at)
+        return createdAt >= Date.parse(DEMO_PULSE_ONE.started_at)
+          && createdAt <= Date.parse(DEMO_PULSE_ONE.ended_at!)
+      }),
+    ).toBe(true)
+    expect(
+      secondPulseResponses.every(
+        (response) =>
+          Date.parse(response.created_at) >= Date.parse(DEMO_PULSE_TWO.started_at),
+      ),
+    ).toBe(true)
   })
 
   it('conserva evidencia trazable dentro de las dudas simuladas', () => {
@@ -73,6 +171,7 @@ describe('datos de la demostración de ClassSignal', () => {
       DEMO_ANALYSIS.result?.concepts.flatMap((concept) => concept.evidence) ?? []
 
     expect(DEMO_ANALYSIS.response_count).toBe(responses.length)
+    expect(DEMO_ANALYSIS.pulse_id).toBe(DEMO_PULSE_ONE.id)
     expect(
       DEMO_ANALYSIS.result?.concepts.every(
         (concept) => concept.evidence.length <= 3,
@@ -108,15 +207,15 @@ describe('datos de la demostración de ClassSignal', () => {
     ).toBe(true)
     expect(DEMO_PULSE_HISTORY[0]).toMatchObject({
       response_count: 20,
-      understood_count: 7,
-      question_count: 8,
-      lost_count: 5,
-    })
-    expect(DEMO_PULSE_HISTORY.at(-1)).toMatchObject({
-      response_count: 20,
       understood_count: 14,
       question_count: 4,
       lost_count: 2,
+    })
+    expect(DEMO_PULSE_HISTORY.at(-1)).toMatchObject({
+      response_count: 20,
+      understood_count: 17,
+      question_count: 2,
+      lost_count: 1,
     })
   })
 })

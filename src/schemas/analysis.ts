@@ -31,6 +31,7 @@ export const confusionMapSchema = z.object({
 export const sessionAnalysisSchema = z.object({
   id: z.string().uuid(),
   session_id: z.string().uuid(),
+  pulse_id: z.string().uuid(),
   professor_id: z.string().uuid(),
   status: z.enum(analysisStatuses),
   model: z.string().trim().min(1).max(100),

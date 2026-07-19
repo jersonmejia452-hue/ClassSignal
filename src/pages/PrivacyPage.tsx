@@ -52,7 +52,7 @@ export function PrivacyPage() {
             correo ni una cuenta. Este aviso describe el tratamiento de datos del MVP publicado.
           </p>
           <p className="mt-3 text-sm font-semibold text-slate-500">
-            Última actualización: 17 de julio de 2026
+            Última actualización: 18 de julio de 2026
           </p>
         </div>
 
@@ -62,10 +62,15 @@ export function PrivacyPage() {
             title="Cuando participa un estudiante"
           >
             <ul className="space-y-3">
-              <li>Se guarda el estado elegido, la duda opcional, la clase y la hora del envío.</li>
               <li>
-                El navegador conserva un UUID aleatorio en <code className="font-mono text-xs">localStorage</code>.
-                El servidor lo transforma con HMAC en un identificador diferente para cada clase.
+                Se guarda el estado elegido, la duda opcional, la clase, el pulso y la hora del
+                envío.
+              </li>
+              <li>
+                El navegador conserva un UUID aleatorio y recuerda los pulsos ya respondidos en{' '}
+                <code className="font-mono text-xs">localStorage</code>. El servidor transforma el
+                UUID con HMAC en un identificador diferente para cada pulso, por lo que no permite
+                relacionar a una persona entre rondas.
               </li>
               <li>
                 No escribas nombres ni otros datos personales en la duda. El profesor puede leer el
@@ -73,9 +78,9 @@ export function PrivacyPage() {
               </li>
               <li>
                 Si el profesor activa el muro de dudas, el texto puede mostrarse de forma anónima a
-                quienes tengan el enlace de la clase mientras la sesión siga activa. El muro no
-                publica tu identificador ni tu estado de comprensión, y el profesor puede ocultar
-                preguntas individuales.
+                quienes tengan el enlace de la clase mientras ese pulso siga activo. Cada pulso
+                comienza con el muro oculto. El muro no publica tu identificador ni tu estado de
+                comprensión, y el profesor puede ocultar preguntas individuales.
               </li>
             </ul>
           </PrivacySection>
@@ -107,9 +112,9 @@ export function PrivacyPage() {
           >
             <p>
               Supabase gestiona el correo y la sesión del profesor. Cuando el profesor solicita un
-              mapa de confusión, ClassSignal envía a OpenAI el contexto de la clase y las respuestas
-              colectivas necesarias para generar el análisis. La clave de OpenAI permanece en el
-              servidor y nunca llega al navegador.
+              mapa de confusión, ClassSignal envía a OpenAI el contexto de la clase y únicamente las
+              respuestas colectivas del pulso seleccionado necesarias para generar el análisis. La
+              clave de OpenAI permanece en el servidor y nunca llega al navegador.
             </p>
           </PrivacySection>
 

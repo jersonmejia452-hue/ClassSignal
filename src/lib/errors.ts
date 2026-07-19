@@ -27,6 +27,35 @@ export function getErrorMessage(
   return fallback
 }
 
+export function getSessionLifecycleErrorMessage(
+  error: unknown,
+  fallback: string,
+) {
+  const message = getErrorMessage(error, fallback).toLowerCase()
+
+  if (message.includes('pulse_has_no_responses')) {
+    return 'Recibe al menos una señal en el pulso actual antes de abrir el siguiente.'
+  }
+
+  if (message.includes('pulse_limit_reached')) {
+    return 'Esta clase ya alcanzó el máximo de seis pulsos.'
+  }
+
+  if (message.includes('session_inactive')) {
+    return 'Reactiva la clase antes de abrir otro pulso.'
+  }
+
+  if (message.includes('pulse_inactive')) {
+    return 'No encontramos un pulso activo. Actualiza la clase e intenta nuevamente.'
+  }
+
+  if (message.includes('session_not_found')) {
+    return 'No encontramos esta clase o ya no pertenece a tu cuenta.'
+  }
+
+  return getErrorMessage(error, fallback)
+}
+
 export function getAuthErrorMessage(error: unknown) {
   const message = getErrorMessage(error).toLowerCase()
 
