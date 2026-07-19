@@ -53,27 +53,27 @@ export function SessionPulseControl({
       aria-labelledby="session-pulse-control-title"
       className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5">
         <div className="flex items-center gap-2">
           <RadioTower className="size-4 text-blue-700" aria-hidden="true" />
           <h2 className="text-sm font-extrabold text-slate-950" id="session-pulse-control-title">
-            Rondas de comprensión
+            Pulsos
           </h2>
         </div>
         <span className="text-xs font-extrabold text-slate-500">
-          {pulseCount} de {maximumSessionPulseCount} pulsos
+          {pulseCount}/{maximumSessionPulseCount}
         </span>
       </div>
 
-      <div className="grid gap-5 p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-6">
+      <div className="grid gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-5">
         <div>
           {hasActivePulse ? (
             <>
               <PulseStatusBadge isActive ordinal={activePulseOrdinal} />
-              <p className="mt-3 text-sm leading-6 text-slate-600">
-                Recibe señales en tiempo real. Abrir el siguiente pulso cerrará este y conservará sus resultados.
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Abrir otro pulso conserva este resultado y permite responder de nuevo.
               </p>
-              <p className="mt-2 text-sm font-extrabold text-slate-900" aria-live="polite">
+              <p className="mt-1 text-sm font-extrabold text-slate-900" aria-live="polite">
                 {activeResponseCount} {activeResponseCount === 1 ? 'señal recibida' : 'señales recibidas'}
                 {activePulseStartedAt ? ` · inició a las ${formatTime(activePulseStartedAt)}` : ''}
               </p>
@@ -83,8 +83,8 @@ export function SessionPulseControl({
               <p className="font-extrabold text-slate-950">
                 {pulseCount === 0 ? 'Abre el primer pulso de la clase' : 'No hay un pulso activo'}
               </p>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                El mismo código y QR sirven para todos los pulsos de esta clase.
+              <p className="mt-1 text-sm leading-6 text-slate-600">
+                El código y el QR no cambian.
               </p>
             </>
           )}

@@ -12,6 +12,10 @@ import { ResponseSummary } from '../../components/responses/ResponseSummary'
 import { ShareSessionCard } from '../../components/sessions/ShareSessionCard'
 import { SessionPublicationPanel } from '../../components/sessions/SessionPublicationPanel'
 import { SessionStatusBadge } from '../../components/sessions/SessionStatusBadge'
+import {
+  SessionWorkspaceNav,
+  type SessionWorkspacePanel,
+} from '../../components/sessions/SessionWorkspaceNav'
 import { Alert } from '../../components/ui/Alert'
 import { Button } from '../../components/ui/Button'
 import { EmptyState } from '../../components/ui/EmptyState'
@@ -66,6 +70,7 @@ export function SessionDetailPage() {
   const [publicationError, setPublicationError] = useState<string | null>(null)
   const [isPublicationLoaded, setIsPublicationLoaded] = useState(false)
   const [isRetryingPublication, setIsRetryingPublication] = useState(false)
+  const [workspacePanel, setWorkspacePanel] = useState<SessionWorkspacePanel>('live')
   const currentSessionIdRef = useRef<string | null>(null)
   const selectedPulseIdRef = useRef<string | null>(null)
 
@@ -130,6 +135,10 @@ export function SessionDetailPage() {
     () => responses.filter((response) => response.pulse_id === selectedPulseId),
     [responses, selectedPulseId],
   )
+  const selectedQuestionResponses = useMemo(
+    () => selectedResponses.filter((response) => response.question_text?.trim()),
+    [selectedResponses],
+  )
   const activeResponses = useMemo(
     () => activePulse
       ? responses.filter((response) => response.pulse_id === activePulse.id)
@@ -178,6 +187,7 @@ export function SessionDetailPage() {
       setPublicationError(null)
       setIsPublicationLoaded(false)
       setIsRetryingPublication(false)
+      setWorkspacePanel('live')
       setToggleError(null)
       setIsToggling(false)
       setQuestionWallError(null)
@@ -414,6 +424,13 @@ export function SessionDetailPage() {
     (status) => ['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status),
   )
   const hasReachedPulseLimit = pulses.length >= maximumSessionPulseCount
+  const publicationStatus = !session.course_id
+    ? 'No disponible'
+    : !isPublicationLoaded
+      ? 'Revisar'
+      : publication
+        ? 'Publicado'
+        : 'Pendiente'
 
   return (
     <div>
@@ -428,23 +445,24 @@ export function SessionDetailPage() {
         </Alert>
       )}
 
-      <div className="mt-4 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+      <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <SessionStatusBadge isActive={session.is_active} />
             <p className="text-xs font-extrabold tracking-[0.12em] text-blue-700 uppercase">
               {session.subject}
             </p>
           </div>
-          <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+          <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
             {session.title}
           </h1>
-          <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600">
-            {session.topic}
-          </p>
-          <p className="mt-2 text-xs font-medium text-slate-400">
-            Creada {formatDateTime(session.created_at)}
-          </p>
+          <div className="mt-2 flex max-w-3xl flex-wrap items-center gap-x-2 gap-y-1 text-sm leading-6">
+            <p className="font-semibold text-slate-600">{session.topic}</p>
+            <span className="text-slate-300" aria-hidden="true">·</span>
+            <time className="text-xs font-medium text-slate-400" dateTime={session.created_at}>
+              Creada {formatDateTime(session.created_at)}
+            </time>
+          </div>
         </div>
 
         <Button
@@ -478,85 +496,169 @@ export function SessionDetailPage() {
         </Alert>
       )}
 
-      <div className="mt-8">
-        <ShareSessionCard session={session} />
-      </div>
+      <SessionWorkspaceNav
+        activePanel={workspacePanel}
+        liveResponseCount={selectedResponses.length}
+        onChange={setWorkspacePanel}
+        publicationStatus={publicationStatus}
+        questionCount={selectedQuestionResponses.length}
+      />
 
-      {session.course_id ? (
-        <div className="mt-5">
-          {isPublicationLoaded ? (
-            <SessionPublicationPanel
-              error={publicationError}
-              key={session.id}
-              onDelete={removePublication}
-              onSave={savePublication}
-              publication={publication}
-            />
-          ) : (
-            <Alert title="No pudimos comprobar la publicación" tone="error">
-              <p>{publicationError || 'No pudimos cargar el archivo estudiantil de esta clase.'}</p>
-              <Button
-                className="mt-4"
-                isLoading={isRetryingPublication}
-                onClick={() => void retryPublication()}
-                variant="secondary"
-              >
-                <RefreshCw className="size-4" aria-hidden="true" />
-                Reintentar
-              </Button>
-            </Alert>
-          )}
+      {workspacePanel !== 'publication' && selectedPulse && (
+        <div className="mt-4">
+          <PulseSelector
+            onChange={setSelectedPulseId}
+            options={pulseOptions}
+            value={selectedPulse.id}
+          />
         </div>
-      ) : (
-        <Alert className="mt-5" title="Publicación no disponible">
-          Asocia la clase a un curso para conservar un resumen y materiales en el portal estudiantil.
-        </Alert>
       )}
 
-      <div className="mt-5">
-        <SessionPulseControl
-          activePulseOrdinal={activePulse?.ordinal}
-          activePulseStartedAt={activePulse?.started_at}
-          activeResponseCount={activeResponses.length}
-          error={pulsesError}
-          isLoading={isLoadingPulses || isLoadingResponses}
-          isOpening={isOpeningPulse}
-          isSessionActive={session.is_active}
-          onOpenNext={openNextPulse}
-          onRetry={refreshPulses}
-          pulseCount={pulses.length}
-        />
+      <div
+        aria-labelledby="session-workspace-tab-live"
+        hidden={workspacePanel !== 'live'}
+        id="session-workspace-panel-live"
+        role="tabpanel"
+        tabIndex={0}
+      >
+        <div className="mt-5">
+          <ShareSessionCard session={session} />
+        </div>
+
+        <div className="mt-5">
+          <SessionPulseControl
+            activePulseOrdinal={activePulse?.ordinal}
+            activePulseStartedAt={activePulse?.started_at}
+            activeResponseCount={activeResponses.length}
+            error={pulsesError}
+            isLoading={isLoadingPulses || isLoadingResponses}
+            isOpening={isOpeningPulse}
+            isSessionActive={session.is_active}
+            onOpenNext={openNextPulse}
+            onRetry={refreshPulses}
+            pulseCount={pulses.length}
+          />
+        </div>
+
+        {isLoadingPulses && pulses.length === 0 ? (
+          <div className="mt-5 h-28 animate-pulse rounded-2xl border border-slate-200 bg-white" aria-label="Cargando pulsos" role="status" />
+        ) : selectedPulse ? (
+          <div className="mt-8">
+            <ResponseSummary responses={selectedResponses} />
+          </div>
+        ) : (
+          <div className="mt-5">
+            <EmptyState
+              icon={<Radio className="size-5" aria-hidden="true" />}
+              title="Esta clase todavía no tiene pulsos"
+            >
+              Abre el primer pulso para empezar a recibir señales.
+            </EmptyState>
+          </div>
+        )}
       </div>
 
-      {isLoadingPulses && pulses.length === 0 ? (
-        <div className="mt-5 h-28 animate-pulse rounded-2xl border border-slate-200 bg-white" aria-label="Cargando pulsos" role="status" />
-      ) : selectedPulse ? (
-        <>
-          <div className="mt-5">
-            <PulseSelector
-              onChange={setSelectedPulseId}
-              options={pulseOptions}
-              value={selectedPulse.id}
-            />
-          </div>
+      <div
+        aria-labelledby="session-workspace-tab-questions"
+        hidden={workspacePanel !== 'questions'}
+        id="session-workspace-panel-questions"
+        role="tabpanel"
+        tabIndex={0}
+      >
+        {isLoadingPulses && pulses.length === 0 ? (
+          <div className="mt-5 h-28 animate-pulse rounded-2xl border border-slate-200 bg-white" aria-label="Cargando dudas" role="status" />
+        ) : selectedPulse ? (
+          <>
+            <div className="mt-5">
+              <StudentQuestionWallControl
+                disabledReason={selectedPulse.is_active
+                  ? undefined
+                  : 'Selecciona el pulso activo para cambiar el muro que ven los estudiantes.'}
+                error={questionWallError}
+                isActive={session.is_active && selectedPulse.is_active}
+                isUpdating={isTogglingQuestionWall || isToggling}
+                isVisible={selectedPulse.questions_visible_to_students}
+                onToggle={toggleQuestionWall}
+                responses={selectedResponses}
+                sessionCode={session.code}
+              />
+            </div>
 
-          <div className="mt-5">
-            <StudentQuestionWallControl
-              disabledReason={selectedPulse.is_active
-                ? undefined
-                : 'Selecciona el pulso activo para cambiar el muro que ven los estudiantes.'}
-              error={questionWallError}
-              isActive={session.is_active && selectedPulse.is_active}
-              isUpdating={isTogglingQuestionWall || isToggling}
-              isVisible={selectedPulse.questions_visible_to_students}
-              onToggle={toggleQuestionWall}
-              responses={selectedResponses}
-              sessionCode={session.code}
-            />
-          </div>
+            <section className="mt-8" aria-labelledby="responses-title">
+              <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p className="text-xs font-extrabold tracking-[0.13em] text-blue-700 uppercase">
+                    Pulso {selectedPulse.ordinal} · Anónimo
+                  </p>
+                  <h2 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-950" id="responses-title">
+                    Señales y dudas
+                  </h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={cn('inline-flex min-h-9 items-center gap-2 rounded-full px-3 text-xs font-extrabold', isRealtimeConnected ? 'bg-emerald-50 text-emerald-800' : hasRealtimeError ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-800')} role="status">
+                    <span className={cn('size-2 rounded-full', isRealtimeConnected ? 'bg-emerald-500' : hasRealtimeError ? 'bg-red-500' : 'animate-pulse bg-amber-500')} aria-hidden="true" />
+                    {isRealtimeConnected ? 'En vivo' : hasRealtimeError ? 'Sin conexión' : 'Conectando'}
+                  </span>
+                  <Button
+                    aria-label="Actualizar señales y pulsos"
+                    className="min-h-10 px-3"
+                    onClick={() => {
+                      void refreshResponses()
+                      void refreshPulses()
+                    }}
+                    variant="ghost"
+                  >
+                    <RefreshCw className="size-4" aria-hidden="true" />
+                  </Button>
+                </div>
+              </div>
 
-          <div className="mt-10">
-            <ResponseSummary responses={selectedResponses} />
+              {responsesError && <Alert className="mb-4" tone="error">{responsesError}</Alert>}
+              {responseVisibilityError && (
+                <Alert className="mb-4" tone="error">{responseVisibilityError}</Alert>
+              )}
+
+              {isLoadingResponses && selectedResponses.length === 0 ? (
+                <div className="space-y-3" aria-label="Cargando respuestas" role="status">
+                  {Array.from({ length: 3 }).map((_, index) => (
+                    <div className="h-28 animate-pulse rounded-2xl border border-slate-200 bg-white" key={index} />
+                  ))}
+                </div>
+              ) : (
+                <ResponseFeed
+                  ariaLabel="Dudas más recientes"
+                  emptyDescription="Las preguntas anónimas aparecerán aquí cuando el grupo las envíe."
+                  emptyTitle="Aún no hay dudas"
+                  onStudentVisibilityChange={updateResponseVisibility}
+                  responses={selectedQuestionResponses}
+                  updatingResponseId={updatingResponseId}
+                />
+              )}
+            </section>
+          </>
+        ) : (
+          <div className="mt-5">
+            <EmptyState
+              icon={<Radio className="size-5" aria-hidden="true" />}
+              title="Aún no hay dudas para revisar"
+            >
+              Abre un pulso y recibe la primera señal para activar este espacio.
+            </EmptyState>
+          </div>
+        )}
+      </div>
+
+      <div
+        aria-labelledby="session-workspace-tab-analysis"
+        hidden={workspacePanel !== 'analysis'}
+        id="session-workspace-panel-analysis"
+        role="tabpanel"
+        tabIndex={0}
+      >
+        {isLoadingPulses && pulses.length === 0 ? (
+          <div className="mt-5 h-28 animate-pulse rounded-2xl border border-slate-200 bg-white" aria-label="Cargando análisis" role="status" />
+        ) : selectedPulse ? (
+          <>
             {previousPulse && (
               <PulseComparison
                 currentOrdinal={selectedPulse.ordinal}
@@ -565,82 +667,71 @@ export function SessionDetailPage() {
                 previousResponses={previousResponses}
               />
             )}
+            <div className="mt-5">
+              <ConfusionMapPanel
+                analyses={analyses}
+                analysis={latestCompletedAnalysis}
+                error={analysisError}
+                isAnalyzing={isAnalyzing}
+                isLoading={isLoadingAnalyses}
+                latestResponseAt={selectedResponses[0]?.created_at ?? null}
+                latestRun={latestAnalysisRun}
+                onAnalyze={runAnalysis}
+                responseCount={Math.min(selectedResponses.length, analysisResponseLimit)}
+                responsesReady={!isLoadingResponses && !responsesError}
+              />
+            </div>
+          </>
+        ) : (
+          <div className="mt-5">
+            <EmptyState
+              icon={<Radio className="size-5" aria-hidden="true" />}
+              title="Aún no hay señales para analizar"
+            >
+              Abre un pulso y recibe respuestas antes de generar el mapa.
+            </EmptyState>
           </div>
+        )}
+      </div>
 
-          <div className="mt-10">
-            <ConfusionMapPanel
-              analyses={analyses}
-              analysis={latestCompletedAnalysis}
-              error={analysisError}
-              isAnalyzing={isAnalyzing}
-              isLoading={isLoadingAnalyses}
-              latestResponseAt={selectedResponses[0]?.created_at ?? null}
-              latestRun={latestAnalysisRun}
-              onAnalyze={runAnalysis}
-              responseCount={Math.min(selectedResponses.length, analysisResponseLimit)}
-              responsesReady={!isLoadingResponses && !responsesError}
-            />
-          </div>
-
-          <section className="mt-10" aria-labelledby="responses-title">
-            <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <p className="text-xs font-extrabold tracking-[0.13em] text-blue-700 uppercase">
-                  Entrada anónima · Pulso {selectedPulse.ordinal}
-                </p>
-                <h2 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-950" id="responses-title">
-                  Respuestas recientes
-                </h2>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className={cn('inline-flex min-h-9 items-center gap-2 rounded-full px-3 text-xs font-extrabold', isRealtimeConnected ? 'bg-emerald-50 text-emerald-800' : hasRealtimeError ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-800')} role="status">
-                  <span className={cn('size-2 rounded-full', isRealtimeConnected ? 'bg-emerald-500' : hasRealtimeError ? 'bg-red-500' : 'animate-pulse bg-amber-500')} aria-hidden="true" />
-                  {isRealtimeConnected ? 'En vivo' : hasRealtimeError ? 'Sin conexión' : 'Conectando'}
-                </span>
+      <div
+        aria-labelledby="session-workspace-tab-publication"
+        hidden={workspacePanel !== 'publication'}
+        id="session-workspace-panel-publication"
+        role="tabpanel"
+        tabIndex={0}
+      >
+        {session.course_id ? (
+          <div className="mt-5">
+            {isPublicationLoaded ? (
+              <SessionPublicationPanel
+                error={publicationError}
+                key={session.id}
+                onDelete={removePublication}
+                onSave={savePublication}
+                publication={publication}
+              />
+            ) : (
+              <Alert title="No pudimos comprobar la publicación" tone="error">
+                <p>{publicationError || 'No pudimos cargar el archivo estudiantil de esta clase.'}</p>
                 <Button
-                  aria-label="Actualizar respuestas y pulsos"
-                  className="min-h-10 px-3"
-                  onClick={() => {
-                    void refreshResponses()
-                    void refreshPulses()
-                  }}
-                  variant="ghost"
+                  className="mt-4"
+                  isLoading={isRetryingPublication}
+                  onClick={() => void retryPublication()}
+                  variant="secondary"
                 >
                   <RefreshCw className="size-4" aria-hidden="true" />
+                  Reintentar
                 </Button>
-              </div>
-            </div>
-
-            {responsesError && <Alert className="mb-4" tone="error">{responsesError}</Alert>}
-            {responseVisibilityError && (
-              <Alert className="mb-4" tone="error">{responseVisibilityError}</Alert>
+              </Alert>
             )}
-
-            {isLoadingResponses && selectedResponses.length === 0 ? (
-              <div className="space-y-3" aria-label="Cargando respuestas" role="status">
-                {Array.from({ length: 3 }).map((_, index) => (
-                  <div className="h-28 animate-pulse rounded-2xl border border-slate-200 bg-white" key={index} />
-                ))}
-              </div>
-            ) : (
-              <ResponseFeed
-                onStudentVisibilityChange={updateResponseVisibility}
-                responses={selectedResponses}
-                updatingResponseId={updatingResponseId}
-              />
-            )}
-          </section>
-        </>
-      ) : (
-        <div className="mt-5">
-          <EmptyState
-            icon={<Radio className="size-5" aria-hidden="true" />}
-            title="Esta clase todavía no tiene pulsos"
-          >
-            Abre el primer pulso para recibir señales, compartir dudas y generar un mapa de confusión.
-          </EmptyState>
-        </div>
-      )}
+          </div>
+        ) : (
+          <Alert className="mt-5" title="Publicación no disponible">
+            Asocia la clase a un curso para compartir un resumen y materiales.
+          </Alert>
+        )}
+      </div>
     </div>
   )
 }

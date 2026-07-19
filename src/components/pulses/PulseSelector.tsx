@@ -19,21 +19,16 @@ export function PulseSelector({
   return (
     <section
       aria-labelledby="pulse-selector-title"
-      className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 sm:flex sm:items-center sm:justify-between sm:gap-5 sm:p-5"
+      className="rounded-2xl border border-blue-100 bg-blue-50/70 p-3 sm:flex sm:items-center sm:justify-between sm:gap-5 sm:px-4"
     >
-      <div>
-        <p
-          className="text-sm font-extrabold text-[#071a2b]"
-          id="pulse-selector-title"
-        >
-          Pulso que estás revisando
-        </p>
-        <p className="mt-1 text-sm leading-6 text-slate-600">
-          El resumen, el mapa, el muro y las respuestas usan este pulso.
-        </p>
-      </div>
+      <p
+        className="text-sm font-extrabold text-[#071a2b]"
+        id="pulse-selector-title"
+      >
+        Pulso en revisión
+      </p>
 
-      <label className="mt-4 block shrink-0 sm:mt-0" htmlFor="pulse-selector">
+      <label className="mt-3 block shrink-0 sm:mt-0" htmlFor="pulse-selector">
         <span className="sr-only">Seleccionar pulso</span>
         <select
           className="form-input min-w-56 bg-white py-2.5 text-sm font-extrabold"

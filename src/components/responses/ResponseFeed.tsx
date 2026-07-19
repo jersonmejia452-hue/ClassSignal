@@ -13,6 +13,9 @@ const badgeStyles: Record<UnderstandingStatus, string> = {
 }
 
 interface ResponseFeedProps {
+  ariaLabel?: string
+  emptyDescription?: string
+  emptyTitle?: string
   responses: StudentResponse[]
   onStudentVisibilityChange?: (
     responseId: string,
@@ -22,6 +25,9 @@ interface ResponseFeedProps {
 }
 
 export function ResponseFeed({
+  ariaLabel = 'Respuestas más recientes',
+  emptyDescription = 'Comparte el código o el QR. Las respuestas aparecerán aquí sin recargar la página.',
+  emptyTitle = 'Aún no hay respuestas',
   responses,
   onStudentVisibilityChange,
   updatingResponseId = null,
@@ -30,16 +36,16 @@ export function ResponseFeed({
     return (
       <EmptyState
         icon={<MessageSquareText className="size-5" aria-hidden="true" />}
-        title="Aún no hay respuestas"
+        title={emptyTitle}
       >
-        Comparte el código o el QR. Las respuestas aparecerán aquí sin recargar la página.
+        {emptyDescription}
       </EmptyState>
     )
   }
 
   return (
     <ol
-      aria-label="Respuestas más recientes"
+      aria-label={ariaLabel}
       aria-live="polite"
       aria-relevant="additions"
       className="space-y-3"

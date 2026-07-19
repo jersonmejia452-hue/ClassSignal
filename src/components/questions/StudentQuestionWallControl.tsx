@@ -37,11 +37,11 @@ export function StudentQuestionWallControl({
       aria-labelledby="student-question-wall-title"
       className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5">
         <div className="flex items-center gap-2">
           <MessageCircleQuestion className="size-4 text-blue-700" aria-hidden="true" />
           <h2 className="text-sm font-extrabold text-slate-950" id="student-question-wall-title">
-            Muro de dudas para estudiantes
+            Muro de dudas
           </h2>
         </div>
         <Link
@@ -56,12 +56,12 @@ export function StudentQuestionWallControl({
         </Link>
       </div>
 
-      <div className="grid gap-5 p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-6">
+      <div className="grid gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-5">
         <div>
           <p className="text-sm leading-6 text-slate-600">
-            Comparte todas las dudas escritas que no hayas excluido, sin mostrar quién las envió.
+            Comparte solo las dudas aprobadas, siempre de forma anónima.
           </p>
-          <p className="mt-3 text-sm font-extrabold text-slate-900" aria-live="polite">
+          <p className="mt-1 text-sm font-extrabold text-slate-900" aria-live="polite">
             {visibleQuestionCount} de {questions.length}{' '}
             {isVisible ? 'dudas visibles' : 'dudas incluidas al compartir'}
           </p>
