@@ -5,11 +5,6 @@ const optionalUrl = z.preprocess(
   z.string().url().optional(),
 )
 
-const booleanString = z.preprocess(
-  (value) => (value === undefined || value === '' ? 'false' : value),
-  z.enum(['true', 'false']).transform((value) => value === 'true'),
-)
-
 const envSchema = z.object({
   VITE_SUPABASE_URL: z.string().url(),
   VITE_SUPABASE_PUBLISHABLE_KEY: z
@@ -17,9 +12,8 @@ const envSchema = z.object({
     .min(20)
     .refine((value) => value.trim().startsWith('sb_publishable_'), {
       message: 'Use a Supabase publishable key',
-    }),
+  }),
   VITE_PUBLIC_APP_URL: optionalUrl,
-  VITE_PROFESSOR_SIGNUP_ENABLED: booleanString,
 })
 
 export function parsePublicEnvironment(
@@ -36,8 +30,6 @@ export function parsePublicEnvironment(
     VITE_SUPABASE_PUBLISHABLE_KEY:
       supabaseEnvironment.VITE_SUPABASE_PUBLISHABLE_KEY,
     VITE_PUBLIC_APP_URL: buildEnvironment.VITE_PUBLIC_APP_URL,
-    VITE_PROFESSOR_SIGNUP_ENABLED:
-      buildEnvironment.VITE_PROFESSOR_SIGNUP_ENABLED,
   })
 }
 

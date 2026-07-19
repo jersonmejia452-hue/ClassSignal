@@ -2,7 +2,7 @@
 --
 -- Auth users must be created through Supabase Auth, not inserted directly into
 -- auth.users. Therefore this seed is intentionally conditional: after at least
--- one professor has registered, running it adds one demo session, resolves its
+-- one professor profile exists, running it adds one demo session, resolves its
 -- automatically created Pulso 1 and attaches five responses to that pulse. With
 -- no Auth users it is a safe no-op.
 
@@ -15,6 +15,9 @@ begin
   select auth_user.id
   into demo_professor_id
   from auth.users as auth_user
+  join public.profiles as profile
+    on profile.id = auth_user.id
+   and profile.role = 'professor'
   order by auth_user.created_at asc
   limit 1;
 

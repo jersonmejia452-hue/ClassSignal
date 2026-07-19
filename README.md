@@ -1,6 +1,8 @@
 # ClassSignal
 
-ClassSignal es un MVP educativo mobile-first para conocer el pulso de comprensión de una clase sin obligar a los estudiantes a crear una cuenta. El profesor organiza su trabajo por cursos, abre una clase dentro del curso, comparte un código corto o QR y recibe señales anónimas en tiempo real.
+ClassSignal es un MVP educativo mobile-first para conocer el pulso de comprensión de una clase sin obligar a los estudiantes a identificarse al responder. El profesor organiza su trabajo por cursos, abre una clase dentro del curso, comparte un código corto o QR y recibe señales anónimas en tiempo real.
+
+El acceso estudiantil es híbrido: cualquier persona puede responder una clase sin cuenta, mientras que quien quiera conservar sus cursos puede iniciar sesión mediante un enlace mágico por correo. La cuenta permite matricularse, ver clases en vivo y consultar clases anteriores que el profesor haya publicado; nunca se adjunta a las respuestas del pulso.
 
 El modelo de navegación es **curso → clase (sesión) → pulsos → señales**. Un curso conserva el contexto académico y agrupa sus clases; cada clase mantiene un único código, enlace y QR, mientras sus pulsos separan mediciones sucesivas para comparar al grupo antes y después de una intervención docente.
 
@@ -8,15 +10,19 @@ El modelo de navegación es **curso → clase (sesión) → pulsos → señales*
 
 Esta rebanada vertical incluye:
 
-- inicio de sesión por correo para profesores con Supabase Auth y registro público configurable;
+- inicio de sesión por correo para profesores con Supabase Auth y rol docente administrado;
+- portal estudiantil opcional con acceso sin contraseña mediante Magic Link;
 - creación de cursos con nombre, materia y descripción opcional;
+- código permanente de matrícula por curso, apertura/cierre de matrículas y listado de cursos guardados;
 - vista de cada curso con sus clases y acceso directo para iniciar una nueva;
 - creación, cierre y reactivación de sesiones;
 - creación automática de `Pulso 1` y apertura de hasta seis pulsos por clase;
 - un solo pulso activo a la vez; abrir el siguiente cierra el anterior sin cambiar código, enlace ni QR;
 - cierre del pulso activo al finalizar la clase y creación de uno nuevo al reactivarla;
 - código público de seis caracteres y enlace/QR para estudiantes;
-- acceso estudiantil sin cuenta desde `/unirse` o `/s/:codigo`;
+- acceso estudiantil sin cuenta desde `/unirse` o `/s/:codigo` para responder anónimamente;
+- vista estudiantil de clases **en vivo** y **anteriores**, sin prometer ni modelar clases programadas;
+- archivo publicado por el profesor con resumen, recursos y, de forma opcional, dudas anónimas moderadas;
 - estados `Entendí`, `Tengo una duda` y `Estoy perdido`;
 - duda escrita opcional de hasta 1.000 caracteres;
 - identificador anónimo persistente en `localStorage`;
@@ -78,7 +84,11 @@ El repositorio incluye `package-lock.json`; `npm ci` conserva exactamente las ve
 
 Las migraciones crean:
 
+- `public.profiles`, con roles `professor` y `student` controlados por el servidor;
 - `public.courses`, `public.sessions`, `public.session_pulses` y `public.responses`;
+- `public.course_enrollments`, que guarda la matrícula sin almacenar ni referenciar respuestas;
+- `public.session_publications`, donde el profesor decide qué resumen, recursos y dudas moderadas publica en el archivo;
+- un código permanente de matrícula de ocho caracteres y el estado `enrollment_open` para cada curso;
 - relación opcional `sessions.course_id`, protegida por una clave foránea compuesta que impide asignar una clase al curso de otro profesor;
 - `session_pulses(id, session_id, ordinal, is_active, questions_visible_to_students, started_at, ended_at)`;
 - creación automática de Pulso 1, un máximo de seis pulsos y un único pulso activo por sesión;
@@ -90,6 +100,8 @@ Las migraciones crean:
 - la RPC pública y limitada `get_public_session`;
 - la RPC pública y acotada `get_student_question_wall`, que entrega solo las dudas no excluidas del pulso visible mientras la sesión está activa;
 - la RPC autenticada `get_course_pulse_history`, que entrega únicamente el último pulso con respuestas de cada clase propia;
+- RPC autenticadas y acotadas para matricularse, listar cursos propios y consultar solo el archivo publicado de una clase;
+- una RPC docente que devuelve únicamente el conteo de matrículas del curso propio;
 - la publicación de `public.responses` en `supabase_realtime`;
 - `public.session_analyses`, con historial inmutable, caché de snapshots y lectura limitada al profesor propietario;
 - telemetría de tokens/costo y cuotas atómicas de análisis;
@@ -118,19 +130,18 @@ El cliente docente carga de forma paginada un máximo de 3.000 respuestas por cl
 
 En **Authentication > Providers**, conserva habilitado el proveedor Email.
 
-En producción, desactiva **Allow new users to sign up** salvo durante un onboarding controlado. La interfaz oculta “Crear cuenta” cuando `VITE_PROFESSOR_SIGNUP_ENABLED=false`, pero la configuración de Supabase Auth es la frontera real. También conviene habilitar confirmación de correo, protección de contraseñas filtradas y CAPTCHA/Turnstile para cualquier periodo de registro.
+El portal estudiantil usa Magic Link, por lo que **Allow new users to sign up** debe permanecer activado. Cada usuario nuevo recibe el rol `student` desde un trigger de base de datos; no se confía en metadatos editables del navegador para autorizarlo. La pantalla docente no ofrece registro público: crea o promueve las cuentas de profesor mediante un proceso administrativo controlado.
 
-Para un flujo realista se recomienda mantener activa la confirmación de correo:
+Las cuentas existentes que ya poseen cursos o clases se conservan como profesores; las cuentas sin actividad docente quedan como estudiantes. Para promover otra cuenta deliberadamente, verifica primero su correo en **Authentication > Users** y cambia `public.profiles.role` a `professor` desde SQL Editor o una herramienta administrativa protegida. Nunca expongas esa operación en el cliente.
 
-- con confirmación activa, el registro muestra “Revisa tu correo” y el profesor debe abrir el enlace antes de iniciar sesión;
-- con confirmación desactivada, Supabase crea una sesión inmediatamente y la aplicación entra al panel.
+El estudiante escribe su correo en `/estudiante/login`, recibe un enlace de un solo uso y vuelve al portal sin crear contraseña. En **Authentication > URL Configuration** configura:
 
-En **Authentication > URL Configuration** configura:
+- **Site URL:** el origen canónico de la aplicación, por ejemplo `http://localhost:5173`;
+- **Redirect URLs:** registra tanto la raíz como el comodín limitado del portal: `http://localhost:5173/estudiante` y `http://localhost:5173/estudiante/**`.
 
-- **Site URL:** `http://localhost:5173`
-- **Redirect URLs:** `http://localhost:5173/profesor`
+En producción añade `https://tu-dominio/estudiante` y `https://tu-dominio/estudiante/**`. Si pruebas `npm run preview`, registra esas mismas dos rutas bajo `http://localhost:4173`. El comodín queda limitado al portal y permite que el Magic Link regrese al curso o clase que el estudiante intentaba abrir; no uses un comodín de dominio completo. Supabase solo acepta el destino enviado como `emailRedirectTo` cuando coincide con esta lista. Mantén habilitadas las protecciones de correo y revisa los límites del proveedor SMTP antes de una prueba masiva.
 
-Si pruebas `npm run preview`, añade también `http://localhost:4173/profesor`. Si Vite usa otro puerto u origen, registra la URL exacta que aparece en la terminal, seguida de `/profesor`. La aplicación envía esa ruta como `emailRedirectTo` durante el registro.
+El acceso docente existente continúa en `/profesor/login`. Las credenciales de profesor y el Magic Link estudiantil comparten Supabase Auth, pero el rol de `public.profiles` decide qué panel puede abrir cada sesión.
 
 ## 4. Configurar variables de entorno
 
@@ -152,7 +163,6 @@ Completa `.env.local`:
 VITE_SUPABASE_URL=https://your-project-ref.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_key_here
 VITE_PUBLIC_APP_URL=http://localhost:5173
-VITE_PROFESSOR_SIGNUP_ENABLED=false
 OPENAI_API_KEY=sk-your-openai-api-key
 RESPONSE_HMAC_SECRET=replace-with-32-random-bytes
 TURNSTILE_SITE_KEY=replace-with-your-turnstile-site-key
@@ -160,7 +170,7 @@ TURNSTILE_SECRET_KEY=replace-with-your-turnstile-secret-key
 TURNSTILE_EXPECTED_HOSTNAMES=localhost,127.0.0.1
 ```
 
-Las dos primeras variables son obligatorias para la aplicación. `VITE_PUBLIC_APP_URL` es opcional; define el origen que se incluirá en el enlace y el QR. Si se omite, la aplicación usa `window.location.origin`. El registro docente está oculto por defecto; actívalo solo durante onboarding y habilita también el registro en Supabase Auth.
+Las dos primeras variables son obligatorias para la aplicación. `VITE_PUBLIC_APP_URL` es opcional; define el origen que se incluirá en el enlace y el QR. Si se omite, la aplicación usa `window.location.origin`. La creación de cuentas estudiantiles se controla en Supabase Auth; el rol docente se asigna únicamente mediante administración protegida.
 
 En Sites, guarda `VITE_SUPABASE_URL` y `VITE_SUPABASE_PUBLISHABLE_KEY` como
 variables de producción del sitio. El worker las entrega al navegador mediante
@@ -254,6 +264,7 @@ Comandos disponibles:
 ```bash
 npm run dev      # servidor de desarrollo
 npm test         # pruebas unitarias
+npx supabase test db supabase/tests/database # pruebas de permisos y RPC
 npm run build    # comprobación TypeScript y build de producción
 npm run preview  # vista local del build generado
 ```
@@ -265,7 +276,12 @@ npm run preview  # vista local del build generado
 | `/` | Público | Redirige al acceso estudiantil |
 | `/demo` | Público, sin cuenta | Recorrido guiado con dos pulsos, comparación antes/después y análisis precargado |
 | `/unirse` | Público, sin cuenta | Entrada mediante código de seis caracteres |
-| `/profesor/login` | Público | Inicio de sesión y registro opcional por correo |
+| `/estudiante/login` | Público | Solicitud del Magic Link para entrar al portal estudiantil |
+| `/estudiante` | Estudiante autenticado | Cursos matriculados y acceso a clases en vivo o anteriores |
+| `/estudiante/unirse` | Estudiante autenticado | Matrícula mediante el código permanente de un curso |
+| `/estudiante/curso/:courseId` | Estudiante matriculado | Detalle del curso y listado de sus clases |
+| `/estudiante/clase/:sessionId` | Estudiante matriculado | Acceso a la clase en vivo o al archivo publicado por el profesor |
+| `/profesor/login` | Público | Inicio de sesión para cuentas con rol docente |
 | `/profesor` | Profesor autenticado | Inicio y lista de cursos propios |
 | `/profesor/cursos/nuevo` | Profesor autenticado | Creación de un curso |
 | `/profesor/curso/:courseId` | Profesor propietario | Detalle del curso y sus clases |
@@ -278,13 +294,15 @@ npm run preview  # vista local del build generado
 
 Los pulsos no crean rutas, códigos ni enlaces nuevos. El mismo acceso acompaña toda la clase y la sesión pública expone solo el pulso activo necesario para presentar el formulario correcto.
 
+El código de `/unirse` identifica una **clase** y permite responder sin cuenta. El código de `/estudiante/unirse` identifica un **curso** y lo guarda en el portal. Son flujos distintos: estar matriculado no identifica la respuesta ni cambia el límite anónimo por navegador y pulso.
+
 ## Estructura del proyecto
 
 ```text
 src/
 ├── app/          # proveedores y router
 ├── components/   # análisis, auth, layout, preguntas, respuestas, sesiones y UI base
-├── context/      # sesión de autenticación docente
+├── context/      # sesión, perfil y rol de la cuenta autenticada
 ├── demo/         # escenario público autocontenido y datos simulados
 ├── hooks/        # identificador anónimo, polling público y suscripción Realtime
 ├── lib/          # entorno, errores, formato y utilidades
@@ -326,6 +344,17 @@ Usa navegadores distintos o perfiles separados para que sus sesiones y `localSto
 
 Para simular varios estudiantes usa perfiles o navegadores independientes. Varias pestañas del mismo perfil comparten el identificador local, pero el servidor deriva un seudónimo distinto para cada pulso.
 
+### Verificación del portal estudiantil
+
+1. En el panel docente, copia el código permanente de matrícula del curso y confirma que las matrículas estén abiertas.
+2. En otro navegador, abre una ruta protegida del portal, solicita el Magic Link y verifica en el correo que el enlace regrese a esa misma ruta bajo `/estudiante`.
+3. Abre `/estudiante/unirse`, introduce el código del curso y comprueba que el curso quede guardado. Repetir el mismo código debe ser idempotente.
+4. Con una clase activa, confirma que el curso la marque como **En vivo** y que permita abrir el flujo anónimo de respuesta.
+5. Responde el pulso. Comprueba en Supabase que `course_enrollments` contiene la cuenta, pero `responses` no contiene `student_id`, correo ni referencia a la matrícula.
+6. Finaliza la clase. Antes de publicar, el portal debe tratarla como clase anterior sin inventar un resumen ni mostrar dudas.
+7. Desde el panel docente publica un resumen y recursos; habilita las dudas solo después de moderarlas. Comprueba que el archivo estudiantil muestre exclusivamente esos campos y las dudas anónimas autorizadas.
+8. Cierra las matrículas y confirma que un estudiante nuevo recibe un mensaje genérico de código inválido o cerrado, sin revelar si el curso existe.
+
 ## Demo pública para presentaciones
 
 Abre `/demo` para recorrer el producto sin iniciar sesión ni depender de servicios externos. Sus cuatro pasos permiten responder Pulso 1, observar el panel, consultar un mapa de confusión precargado, responder Pulso 2 con el mismo código y comparar el grupo antes/después. El resultado final también alimenta cuatro mediciones históricas.
@@ -341,11 +370,12 @@ El seed crea la sesión `AULA24`, resuelve su Pulso 1 automático y asocia allí
 3. En el SQL Editor, ejecuta todo [`supabase/seed.sql`](supabase/seed.sql).
 4. Inicia sesión con el primer usuario creado y abre el panel.
 
-El seed asigna la demo al usuario Auth más antiguo y es repetible: la sesión y las respuestas usan identificadores deterministas, mientras el pulso se resuelve mediante `(session_id, ordinal)`. Los conflictos se ignoran. Si no existe un usuario o Pulso 1 no fue creado por la migración, termina de forma segura y muestra un aviso en el resultado SQL.
+El seed asigna la demo al perfil docente más antiguo y es repetible: la sesión y las respuestas usan identificadores deterministas, mientras el pulso se resuelve mediante `(session_id, ordinal)`. Los conflictos se ignoran. Si no existe un perfil docente o Pulso 1 no fue creado por la migración, termina de forma segura y muestra un aviso en el resultado SQL.
 
 ## Modelo de seguridad
 
-- Los profesores usan Supabase Auth y el rol `authenticated`.
+- Profesores y estudiantes con portal usan Supabase Auth. `public.profiles.role` distingue `professor` de `student`; el cliente puede leer su rol, pero no asignarlo ni modificarlo.
+- Los usuarios creados después de la migración nacen como estudiantes. Las cuentas docentes requieren una promoción administrativa explícita.
 - Los cursos se autorizan con `professor_id = auth.uid()`; cada profesor solo puede crearlos, consultarlos, modificarlos o eliminarlos dentro de su cuenta.
 - Las sesiones se autorizan con `professor_id = auth.uid()`; un profesor solo puede consultar, modificar o eliminar las propias.
 - Los pulsos heredan la propiedad de su sesión mediante RLS. Solo el profesor propietario puede consultar el historial o abrir el siguiente; un pulso cerrado no puede reabrirse ni modificarse.
@@ -354,7 +384,11 @@ El seed asigna la demo al usuario Auth más antiguo y es repetible: la sesión y
 - El pulso histórico usa una RPC `SECURITY INVOKER`, filtra por `auth.uid()` y devuelve el último pulso con respuestas de cada clase; no incluye dudas ni identificadores anónimos.
 - Un profesor solo puede leer análisis de pulsos propios; el navegador no tiene privilegios para insertar ni modificar resultados de IA.
 - La función limita análisis pagados a 12 por hora y 20 por cada ventana de 24 horas por profesor, con un tope global de 200 por ventana de 24 horas. La caché no consume cuota.
-- Los estudiantes permanecen sin autenticar y usan el rol `anon` mediante un cliente separado.
+- El portal estudiantil solo devuelve cursos donde existe una matrícula para `auth.uid()`. El estudiante no recibe acceso directo a `course_enrollments`, tablas docentes ni respuestas.
+- El código permanente de curso solo crea matrículas mientras `enrollment_open` esté activo. Un código inválido y uno cerrado producen el mismo error para no revelar la existencia del curso.
+- El archivo de una clase se publica por decisión explícita del profesor. Resumen, recursos y dudas moderadas se entregan mediante RPC acotadas; las dudas permanecen ocultas salvo que `questions_published` esté activo.
+- Responder una clase sigue siendo un flujo público con rol `anon` y un cliente Supabase separado, incluso cuando el navegador también tiene una cuenta estudiantil iniciada.
+- La matrícula nunca se une a `responses`: el envío no incluye JWT de la cuenta, `student_id`, correo ni identificador de matrícula.
 - `anon` no tiene lectura directa de `session_pulses`, `responses` ni `session_analyses`. La RPC `get_public_session` devuelve solamente los campos de la clase y el `id`/`ordinal` del pulso activo necesarios para la pantalla pública.
 - El muro comienza oculto en cada pulso nuevo. Su RPC devuelve únicamente `id` y texto de preguntas no excluidas del pulso visible; nunca expone `anonymous_id`, estado de comprensión, hora de envío, `session_id` ni pulsos cerrados.
 - El profesor propietario puede activar u ocultar el muro y moderar cada duda. El estudiante nunca se suscribe directamente a filas de `responses`.
@@ -368,7 +402,7 @@ El seed asigna la demo al usuario Auth más antiguo y es repetible: la sesión y
 - La Edge Function de análisis valida JWT, propiedad de la sesión y pertenencia del pulso. Análisis, snapshot y caché usan únicamente respuestas de ese `pulse_id`; `OPENAI_API_KEY` vive solo en secretos de Supabase.
 - Las dudas se tratan como datos no confiables para reducir prompt injection, y los conteos del mapa se derivan en servidor de referencias reales.
 
-El identificador del estudiante es un UUID aleatorio guardado en `localStorage`. Antes de guardar una respuesta, el servidor genera otro UUID seudónimo específico para ese pulso. No se solicita nombre, correo ni cuenta y la comparación antes/después es estrictamente agregada. Borrar el almacenamiento o cambiar de navegador genera otro identificador local, por eso el servidor conserva además límites por red, pulso y capacidad total.
+El identificador usado para responder es un UUID aleatorio guardado en `localStorage`. Antes de guardar una respuesta, el servidor genera otro UUID seudónimo específico para ese pulso. La cuenta del portal no participa en este proceso y la comparación antes/después es estrictamente agregada. Borrar el almacenamiento o cambiar de navegador genera otro identificador local, por eso el servidor conserva además límites por red, pulso y capacidad total.
 
 Al validar Turnstile, la Edge Function envía a Cloudflare el token y, cuando está disponible, la dirección de red para la comprobación antiabuso. ClassSignal no guarda la IP en sus tablas: conserva únicamente una huella HMAC diaria no reversible para aplicar límites. En una publicación institucional, refleja este procesador también en el aviso de privacidad de la organización.
 
@@ -382,13 +416,51 @@ El costo mostrado es una estimación histórica calculada con la tarifa Luna cap
 
 Revisa que `.env.local` exista, que la URL incluya `https://` y que la publishable key esté completa. Después reinicia `npm run dev`.
 
-### El enlace de confirmación redirige al lugar equivocado
+### El Magic Link redirige al lugar equivocado o muestra una URL no permitida
 
-Verifica **Site URL** y la lista de **Redirect URLs** en Supabase Auth. El origen y el puerto deben coincidir exactamente con los que usa el navegador. Para desarrollo local, registra al menos `http://localhost:5173/profesor`.
+Verifica **Site URL** y la lista de **Redirect URLs** en Supabase Auth. Protocolo, dominio, puerto y ruta deben coincidir con `emailRedirectTo`. Registra la raíz `/estudiante` y su variante `/estudiante/**` tanto en desarrollo como en producción. El comodín debe quedar limitado a esa ruta, nunca a todo el dominio.
 
-### No llega el correo de confirmación
+### No llega el Magic Link
 
-Revisa spam, el estado del proveedor Email y los logs de Auth en Supabase. Evita solicitar muchos correos seguidos porque el servicio puede aplicar límites temporales.
+Revisa spam, que Email y **Allow new users to sign up** estén habilitados, la plantilla de Magic Link, los logs de Auth y el proveedor SMTP. Espera antes de solicitar otro correo: Supabase o el proveedor pueden aplicar un límite temporal. Un mensaje de éxito en la interfaz no confirma por sí solo que el proveedor haya entregado el correo.
+
+### El código del curso aparece como inválido o cerrado
+
+El portal muestra el mismo mensaje para un código inexistente, mal escrito o con matrículas cerradas. Confirma que estás usando el código permanente del **curso**, no el código de una clase; normalízalo a mayúsculas y revisa `courses.enrollment_open` desde el panel docente. Esta respuesta genérica es deliberada y evita enumerar cursos.
+
+### La cuenta abre el panel equivocado o muestra “Rol no autorizado”
+
+Comprueba que exista una fila propia en `public.profiles` y que su rol sea `student` o `professor` según corresponda. Las cuentas nuevas son estudiantes. Promueve profesores solo desde SQL Editor o una herramienta administrativa con privilegios; cambiar metadatos del usuario no concede acceso. Después cierra la sesión local y vuelve a entrar para recargar el perfil.
+
+### La clase anterior no muestra resumen, recursos o muro
+
+Una clase finalizada no se publica automáticamente. El profesor debe guardar una publicación con resumen; los recursos son opcionales y el muro archivado requiere activar explícitamente la publicación de dudas. Solo aparecen preguntas con texto aprobadas antes de guardar esa versión. Las dudas posteriores permanecen privadas hasta que el profesor las modere y vuelva a guardar. Si no existe publicación, el portal muestra la clase anterior sin inventar contenido.
+
+### Errores encontrados y resueltos en el portal estudiantil
+
+| Error detectado | Corrección aplicada |
+| --- | --- |
+| Una cuenta nueva podía heredar capacidades docentes del flujo anterior | Los roles ahora son propiedad del servidor; toda cuenta nueva nace como estudiante y un profesor requiere promoción administrativa |
+| Una operación lenta de publicación podía actualizar la clase equivocada al cambiar de ruta | Cada lectura, guardado y retirada se valida contra el identificador de la clase todavía visible |
+| Un fallo al leer la publicación se confundía con “Sin publicar” y permitía sobrescribir datos | El editor queda bloqueado y ofrece reintento hasta confirmar el estado real en Supabase |
+| Preguntas futuras podían aparecer solas en un archivo ya publicado | Las dudas nacen privadas y cada guardado crea una instantánea de las aprobadas en ese momento |
+| Guardar y retirar una publicación podía ejecutarse a la vez | El formulario y la confirmación comparten un bloqueo de operación y la confirmación recupera el foco del teclado |
+| Un Magic Link iniciado desde una clase protegida perdía el destino original | El enlace conserva únicamente rutas validadas bajo `/estudiante` y rechaza redirecciones externas |
+| Reactivar una clase con seis pulsos siempre terminaba en un error del servidor | La interfaz detecta el límite, bloquea la acción y propone crear una clase nueva |
+| El preview de Cloudflare no iniciaba porque una constante se exportaba como entrada RPC del worker | La ruta de configuración quedó privada al módulo; solo las funciones válidas permanecen como exports del worker |
+| El asesor marcaba las matrículas con RLS pero sin una política visible | Se añadió una política explícita que deniega todo acceso directo; las matrículas siguen disponibles únicamente mediante RPC estrechas |
+| La tabla privada de intentos de matrícula no tenía una clave primaria | Cada intento recibe ahora un identificador interno estable sin exponerlo al cliente |
+
+### Catálogo operativo de errores del portal
+
+| Señal interna o síntoma | Significado seguro | Acción operativa |
+| --- | --- | --- |
+| `course_enrollment_unavailable` | Código inválido o matrículas cerradas | Verificar el código de curso y `enrollment_open`; no revelar cuál de las dos causas ocurrió |
+| `student_role_required` | La sesión no pertenece a un estudiante | Cerrar sesión, revisar `public.profiles` y volver a autenticar |
+| `course_not_found` | El curso no existe para ese docente o no le pertenece | Confirmar la cuenta docente y el identificador del curso sin desactivar RLS |
+| Perfil no disponible | Falta o no pudo leerse la fila propia de `profiles` | Confirmar que la migración y el trigger se aplicaron; reparar la fila desde administración |
+| Clase sin publicación | No hay resumen publicado todavía | Publicar desde el panel docente; no consultar directamente `responses` como sustituto |
+| Magic Link rechazado | Destino fuera de la allowlist, enlace vencido/usado o límite de correo | Revisar Redirect URLs y logs de Auth; solicitar un enlace nuevo una sola vez |
 
 ### Aparece “relation does not exist”, “function not found” o un error de permisos
 
@@ -434,7 +506,7 @@ No uses esa dirección de ejemplo literalmente; reemplázala por la IP local rea
 
 ### El seed no crea la sesión `AULA24`
 
-Crea primero un usuario mediante Supabase Auth y aplica todas las migraciones, incluida la que crea `public.session_pulses`. Si hay varios usuarios, la sesión pertenece al más antiguo. Comprueba que `AULA24` tenga un pulso con `ordinal = 1`; el seed no inventa uno si el trigger no se ejecutó. Revisa también los avisos del SQL Editor por una posible colisión previa del código o del identificador de demo.
+Crea primero un perfil docente mediante Supabase Auth y promoción administrativa, y aplica todas las migraciones, incluida la que crea `public.session_pulses`. Si hay varios profesores, la sesión pertenece al perfil docente más antiguo. Comprueba que `AULA24` tenga un pulso con `ordinal = 1`; el seed no inventa uno si el trigger no se ejecutó. Revisa también los avisos del SQL Editor por una posible colisión previa del código o del identificador de demo.
 
 ## Guion corto de demostración
 

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ArrowRight, LockKeyhole, RadioTower, RefreshCw } from 'lucide-react'
 
 import { formatTime } from '../../lib/format'
+import { maximumSessionPulseCount } from '../../types/domain'
 import { Alert } from '../ui/Alert'
 import { Button } from '../ui/Button'
 import { PulseStatusBadge } from './PulseStatusBadge'
@@ -19,8 +20,6 @@ interface SessionPulseControlProps {
   pulseCount: number
 }
 
-const maximumPulseCount = 6
-
 export function SessionPulseControl({
   activePulseOrdinal,
   activePulseStartedAt,
@@ -35,7 +34,7 @@ export function SessionPulseControl({
 }: SessionPulseControlProps) {
   const [isConfirming, setIsConfirming] = useState(false)
   const hasActivePulse = activePulseOrdinal !== undefined
-  const hasReachedLimit = pulseCount >= maximumPulseCount
+  const hasReachedLimit = pulseCount >= maximumSessionPulseCount
   const needsFirstResponse = !isLoading && hasActivePulse && activeResponseCount === 0
   const nextOrdinal = pulseCount + 1
   const canOpen = isSessionActive
@@ -62,7 +61,7 @@ export function SessionPulseControl({
           </h2>
         </div>
         <span className="text-xs font-extrabold text-slate-500">
-          {pulseCount} de {maximumPulseCount} pulsos
+          {pulseCount} de {maximumSessionPulseCount} pulsos
         </span>
       </div>
 

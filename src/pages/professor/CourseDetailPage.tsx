@@ -3,13 +3,18 @@ import { ArrowLeft, BookOpen, CalendarPlus2, Plus, RadioTower, RefreshCw } from 
 import { Link, useLocation, useParams } from 'react-router-dom'
 
 import { SessionCard } from '../../components/sessions/SessionCard'
+import { CourseEnrollmentCard } from '../../components/courses/CourseEnrollmentCard'
 import { CoursePulseHistory } from '../../components/courses/CoursePulseHistory'
 import { Alert } from '../../components/ui/Alert'
 import { Button } from '../../components/ui/Button'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { getErrorMessage } from '../../lib/errors'
-import { getCourseById } from '../../services/courses.service'
+import {
+  getCourseById,
+  setCourseEnrollmentOpen,
+} from '../../services/courses.service'
 import { getCoursePulseHistory } from '../../services/coursePulse.service'
+import { getCourseEnrollmentCount } from '../../services/publications.service'
 import { getSessionsByCourse } from '../../services/sessions.service'
 import type {
   ClassSession,
@@ -32,8 +37,11 @@ export function CourseDetailPage() {
   const [isLoadingPulse, setIsLoadingPulse] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [pulseError, setPulseError] = useState<string | null>(null)
+  const [enrollmentCount, setEnrollmentCount] = useState<number | null>(null)
+  const [enrollmentError, setEnrollmentError] = useState<string | null>(null)
   const courseRequestId = useRef(0)
   const pulseRequestId = useRef(0)
+  const currentCourseIdRef = useRef<string | null>(null)
 
   const loadCourse = useCallback(async () => {
     const requestId = courseRequestId.current + 1
@@ -51,16 +59,26 @@ export function CourseDetailPage() {
     setError(null)
     setCourse(null)
     setSessions([])
+    setEnrollmentCount(null)
+    setEnrollmentError(null)
 
     try {
-      const [courseResult, sessionResult] = await Promise.all([
+      const [courseResult, sessionResult, enrollmentResult] = await Promise.all([
         getCourseById(courseId),
         getSessionsByCourse(courseId),
+        getCourseEnrollmentCount(courseId)
+          .then((count) => ({ count, error: null }))
+          .catch(() => ({
+            count: null,
+            error: 'No pudimos cargar el conteo de estudiantes.',
+          })),
       ])
       if (requestId !== courseRequestId.current) return
 
       setCourse(courseResult)
       setSessions(sessionResult)
+      setEnrollmentCount(enrollmentResult.count)
+      setEnrollmentError(enrollmentResult.error)
     } catch (loadError) {
       if (requestId !== courseRequestId.current) return
 
@@ -108,9 +126,16 @@ export function CourseDetailPage() {
   }, [courseId])
 
   useEffect(() => {
+    currentCourseIdRef.current = courseId ?? null
     void loadCourse()
     void loadPulse()
-  }, [loadCourse, loadPulse])
+
+    return () => {
+      if (currentCourseIdRef.current === courseId) {
+        currentCourseIdRef.current = null
+      }
+    }
+  }, [courseId, loadCourse, loadPulse])
 
   if (isLoading) {
     return (
@@ -188,6 +213,24 @@ export function CourseDetailPage() {
           </div>
         </div>
       </section>
+
+      <div className="mt-6">
+        <CourseEnrollmentCard
+          course={course}
+          enrollmentCount={enrollmentCount}
+          error={enrollmentError}
+          onEnrollmentOpenChange={async (nextOpen) => {
+            const targetCourseId = course.id
+            const updatedCourse = await setCourseEnrollmentOpen(
+              targetCourseId,
+              nextOpen,
+            )
+            if (currentCourseIdRef.current === targetCourseId) {
+              setCourse(updatedCourse)
+            }
+          }}
+        />
+      </div>
 
       <div className="mt-10">
         <CoursePulseHistory

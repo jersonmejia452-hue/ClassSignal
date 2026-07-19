@@ -149,11 +149,12 @@ async function createHmac(source: string, secret: string) {
 
 async function createDailyNetworkFingerprint(
   request: Request,
+  pulseId: string,
   secret: string,
 ) {
   const day = new Date().toISOString().slice(0, 10);
   const signature = await createHmac(
-    `network:${day}:${getNetworkAddress(request)}`,
+    `network:${day}:${pulseId}:${getNetworkAddress(request)}`,
     secret,
   );
 
@@ -396,6 +397,7 @@ Deno.serve(async (request) => {
 
     const networkFingerprint = await createDailyNetworkFingerprint(
       request,
+      submission.pulseId,
       configuration.hmacSecret,
     );
     const serverAnonymousId = await createPulseAnonymousId(

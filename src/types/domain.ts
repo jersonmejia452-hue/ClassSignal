@@ -2,6 +2,20 @@ export const understandingStatuses = ['understood', 'question', 'lost'] as const
 
 export type UnderstandingStatus = (typeof understandingStatuses)[number]
 
+export const accountRoles = ['professor', 'student'] as const
+
+export type AccountRole = (typeof accountRoles)[number]
+
+export const maximumSessionPulseCount = 6
+
+export interface AccountProfile {
+  id: string
+  role: AccountRole
+  display_name: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface ClassSession {
   id: string
   professor_id: string
@@ -33,6 +47,8 @@ export interface Course {
   name: string
   subject: string
   description: string | null
+  enrollment_code: string
+  enrollment_open: boolean
   created_at: string
   updated_at: string
 }
@@ -52,6 +68,81 @@ export interface CoursePulsePoint {
   understood_count: number
   question_count: number
   lost_count: number
+}
+
+export interface StudentCourse {
+  course_id: string
+  name: string
+  subject: string
+  description: string | null
+  joined_at: string
+  session_count: number
+  active_session_count: number
+  latest_session_at: string | null
+}
+
+export interface StudentCourseDetails {
+  course_id: string
+  name: string
+  subject: string
+  description: string | null
+  joined_at: string
+}
+
+export interface StudentCourseSession {
+  session_id: string
+  code: string
+  title: string
+  subject: string
+  topic: string
+  is_active: boolean
+  created_at: string
+  ended_at: string | null
+  has_publication: boolean
+  questions_published: boolean
+}
+
+export interface StudentSessionArchive {
+  session_id: string
+  course_id: string
+  course_name: string
+  code: string
+  title: string
+  subject: string
+  topic: string
+  is_active: boolean
+  created_at: string
+  ended_at: string | null
+  summary: string | null
+  resources: string | null
+  questions_published: boolean
+  published_at: string | null
+}
+
+export interface StudentArchiveQuestion {
+  response_id: string
+  pulse_ordinal: number
+  question_text: string
+}
+
+export interface EnrollmentResult {
+  course_id: string
+  enrollment_status: 'joined' | 'already_enrolled'
+}
+
+export interface SessionPublication {
+  session_id: string
+  summary: string
+  resources: string | null
+  questions_published: boolean
+  published_at: string
+  updated_at: string
+}
+
+export interface SessionPublicationDraft {
+  summary: string
+  resources: string | null
+  questions_published: boolean
 }
 
 export interface PublicClassSession {

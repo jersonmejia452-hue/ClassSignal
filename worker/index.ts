@@ -16,7 +16,7 @@ interface PublicRuntimeConfig {
   VITE_SUPABASE_PUBLISHABLE_KEY?: string
 }
 
-export const runtimeConfigPath = '/__classsignal-config.js'
+const runtimeConfigPath = '/__classsignal-config.js'
 
 function asPublishableKey(value: string | undefined) {
   const key = value?.trim()

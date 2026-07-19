@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import {
   ArrowRight,
+  BookOpenCheck,
   KeyRound,
   LockKeyhole,
   PlayCircle,
@@ -155,7 +156,7 @@ export function JoinSessionPage() {
         <div className="mt-6 flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm leading-6 text-blue-950">
           <LockKeyhole className="mt-0.5 size-5 shrink-0 text-blue-700" aria-hidden="true" />
           <p>
-            <strong>Tu participación es anónima.</strong> ClassSignal no pide nombre, correo ni registro estudiantil.
+            <strong>Tu participación es anónima.</strong> Este acceso no pide nombre, correo ni registro estudiantil.
           </p>
         </div>
 
@@ -171,6 +172,24 @@ export function JoinSessionPage() {
               ¿No tienes código?
               <span className="mt-0.5 block text-xs font-semibold text-slate-600">
                 Explora la demo guiada con una clase simulada.
+              </span>
+            </span>
+          </span>
+          <ArrowRight className="size-4 shrink-0 text-blue-700" aria-hidden="true" />
+        </Link>
+
+        <Link
+          className="mt-4 flex min-h-14 items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-white px-4 py-3 text-left text-sm font-extrabold text-[#071a2b] transition hover:border-blue-300 hover:bg-blue-50/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          to="/estudiante/login"
+        >
+          <span className="inline-flex items-center gap-3">
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-700">
+              <BookOpenCheck className="size-5" aria-hidden="true" />
+            </span>
+            <span>
+              ¿Quieres conservar tus cursos?
+              <span className="mt-0.5 block text-xs font-semibold text-slate-600">
+                Entra al portal estudiantil y consulta clases anteriores.
               </span>
             </span>
           </span>

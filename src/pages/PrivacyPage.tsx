@@ -7,7 +7,7 @@ import { Brand } from '../components/ui/Brand'
 const processors = [
   {
     name: 'Supabase',
-    purpose: 'autenticación docente, base de datos, tiempo real y funciones de servidor',
+    purpose: 'autenticación de cuentas, matrículas, base de datos, tiempo real y funciones de servidor',
     href: 'https://supabase.com/privacy',
   },
   {
@@ -48,8 +48,10 @@ export function PrivacyPage() {
             Privacidad de ClassSignal
           </h1>
           <p className="mt-5 text-lg leading-8 text-slate-600">
-            ClassSignal permite expresar el nivel de comprensión sin pedir al estudiante nombre,
-            correo ni una cuenta. Este aviso describe el tratamiento de datos del MVP publicado.
+            ClassSignal permite responder sin compartir nombre, correo ni una cuenta. El portal
+            estudiantil opcional usa correo para guardar cursos, pero esa identidad permanece
+            separada de las respuestas anónimas. Este aviso describe el tratamiento de datos del
+            MVP publicado.
           </p>
           <p className="mt-3 text-sm font-semibold text-slate-500">
             Última actualización: 18 de julio de 2026
@@ -59,7 +61,7 @@ export function PrivacyPage() {
         <div className="mt-10 grid gap-6 lg:grid-cols-2">
           <PrivacySection
             icon={<LockKeyhole className="size-5" aria-hidden="true" />}
-            title="Cuando participa un estudiante"
+            title="Al responder un pulso"
           >
             <ul className="space-y-3">
               <li>
@@ -73,6 +75,11 @@ export function PrivacyPage() {
                 relacionar a una persona entre rondas.
               </li>
               <li>
+                El envío usa un cliente público separado: no incluye la sesión de la cuenta, el
+                correo, el identificador del estudiante ni su matrícula, aunque el portal esté
+                abierto en el mismo navegador.
+              </li>
+              <li>
                 No escribas nombres ni otros datos personales en la duda. El profesor puede leer el
                 texto exactamente como fue enviado.
               </li>
@@ -80,7 +87,34 @@ export function PrivacyPage() {
                 Si el profesor activa el muro de dudas, el texto puede mostrarse de forma anónima a
                 quienes tengan el enlace de la clase mientras ese pulso siga activo. Cada pulso
                 comienza con el muro oculto. El muro no publica tu identificador ni tu estado de
-                comprensión, y el profesor puede ocultar preguntas individuales.
+                comprensión, y el profesor puede ocultar preguntas individuales. Después de la
+                clase, solo puede aparecer en el archivo si el profesor publica expresamente las
+                dudas moderadas.
+              </li>
+            </ul>
+          </PrivacySection>
+
+          <PrivacySection
+            icon={<Database className="size-5" aria-hidden="true" />}
+            title="Cuenta y cursos guardados"
+          >
+            <ul className="space-y-3">
+              <li>
+                La cuenta estudiantil es opcional. Supabase Auth procesa el correo y envía un Magic
+                Link para iniciar sesión sin contraseña.
+              </li>
+              <li>
+                Al introducir el código permanente de un curso se guardan el identificador de la
+                cuenta, el curso y la fecha de matrícula. Esto permite ver sus clases en vivo y las
+                clases anteriores.
+              </li>
+              <li>
+                Una matrícula no da acceso a respuestas individuales. La tabla de matrículas no se
+                une a las respuestas anónimas ni almacena su UUID local.
+              </li>
+              <li>
+                En una clase anterior solo se muestran el resumen, los recursos y las dudas
+                moderadas que el profesor haya decidido publicar.
               </li>
             </ul>
           </PrivacySection>
@@ -111,10 +145,10 @@ export function PrivacyPage() {
             title="Profesores y análisis"
           >
             <p>
-              Supabase gestiona el correo y la sesión del profesor. Cuando el profesor solicita un
-              mapa de confusión, ClassSignal envía a OpenAI el contexto de la clase y únicamente las
-              respuestas colectivas del pulso seleccionado necesarias para generar el análisis. La
-              clave de OpenAI permanece en el servidor y nunca llega al navegador.
+              Supabase gestiona el correo, la sesión y el rol de cada cuenta. Cuando el profesor
+              solicita un mapa de confusión, ClassSignal envía a OpenAI el contexto de la clase y
+              únicamente las respuestas colectivas del pulso seleccionado necesarias para generar
+              el análisis. La clave de OpenAI permanece en el servidor y nunca llega al navegador.
             </p>
           </PrivacySection>
 
@@ -123,10 +157,12 @@ export function PrivacyPage() {
             title="Conservación y control"
           >
             <p>
-              Las respuestas y análisis permanecen en el proyecto de Supabase hasta que el
-              responsable de la instalación los elimine. El MVP aún no aplica un plazo automático
-              de borrado. Para ejercer una solicitud sobre una clase, contacta al profesor o a la
-              institución que opera esta instalación.
+              Cuentas, matrículas, publicaciones, respuestas y análisis permanecen en el proyecto
+              de Supabase hasta que el responsable de la instalación los elimine. El MVP aún no
+              aplica un plazo automático de borrado. Eliminar una matrícula o cuenta no permite
+              identificar ni retirar una respuesta concreta, porque las respuestas no guardan esa
+              relación. Para ejercer una solicitud, contacta al profesor o a la institución que
+              opera esta instalación.
             </p>
           </PrivacySection>
         </div>

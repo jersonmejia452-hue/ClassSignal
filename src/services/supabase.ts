@@ -6,7 +6,7 @@ import {
   migrateTeacherAuthStorage,
 } from '../lib/storageMigration'
 
-let teacherClient: SupabaseClient | null = null
+let accountClient: SupabaseClient | null = null
 let publicClient: SupabaseClient | null = null
 
 function resolveTeacherAuthStorageKey() {
@@ -22,7 +22,7 @@ function resolveTeacherAuthStorageKey() {
 if (env) {
   const teacherAuthStorageKey = resolveTeacherAuthStorageKey()
 
-  teacherClient = createClient(
+  accountClient = createClient(
     env.VITE_SUPABASE_URL,
     env.VITE_SUPABASE_PUBLISHABLE_KEY,
     {
@@ -56,8 +56,12 @@ function missingConfigurationError() {
 }
 
 export function getTeacherSupabase() {
-  if (!teacherClient) throw missingConfigurationError()
-  return teacherClient
+  return getAccountSupabase()
+}
+
+export function getAccountSupabase() {
+  if (!accountClient) throw missingConfigurationError()
+  return accountClient
 }
 
 export function getPublicSupabase() {
@@ -65,4 +69,4 @@ export function getPublicSupabase() {
   return publicClient
 }
 
-export const isSupabaseConfigured = Boolean(teacherClient && publicClient)
+export const isSupabaseConfigured = Boolean(accountClient && publicClient)

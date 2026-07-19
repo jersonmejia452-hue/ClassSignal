@@ -353,14 +353,17 @@ export function StudentSessionPage() {
 
       if (errorCode === 'duplicate_response') {
         rememberSubmittedPulse(pulseId)
-        if (activePulseIdRef.current === pulseId) {
-          setSubmittedStatus(null)
-          setIsSubmitted(true)
-          setPulseAnnouncement(
-            'Tu respuesta para este pulso ya estaba registrada.',
-          )
-          void questionWall.refresh()
-        }
+      }
+
+      if (activePulseIdRef.current !== pulseId) return
+
+      if (errorCode === 'duplicate_response') {
+        setSubmittedStatus(null)
+        setIsSubmitted(true)
+        setPulseAnnouncement(
+          'Tu respuesta para este pulso ya estaba registrada.',
+        )
+        void questionWall.refresh()
       } else if (errorCode === 'session_inactive') {
         setSubmitError('La clase ya no está recibiendo respuestas.')
         setSession((current) => (current ? { ...current, is_active: false } : current))
@@ -466,7 +469,7 @@ export function StudentSessionPage() {
         <div className="mt-6 flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-blue-950">
           <LockKeyhole className="mt-0.5 size-5 shrink-0 text-blue-700" aria-hidden="true" />
           <p>
-            <strong>Tu respuesta es anónima.</strong> No pedimos tu nombre, correo ni una cuenta.
+            <strong>Tu respuesta es anónima.</strong> Este envío usa un canal público separado y no incluye tu nombre, correo, cuenta ni matrícula.
             {' '}Tu profesor puede compartir el texto de tu duda de forma anónima con el grupo.
           </p>
         </div>

@@ -14,7 +14,6 @@ const badgeStyles: Record<UnderstandingStatus, string> = {
 
 interface ResponseFeedProps {
   responses: StudentResponse[]
-  isStudentVisibilityDisabled?: boolean
   onStudentVisibilityChange?: (
     responseId: string,
     isVisibleToStudents: boolean,
@@ -24,7 +23,6 @@ interface ResponseFeedProps {
 
 export function ResponseFeed({
   responses,
-  isStudentVisibilityDisabled = false,
   onStudentVisibilityChange,
   updatingResponseId = null,
 }: ResponseFeedProps) {
@@ -86,10 +84,12 @@ export function ResponseFeed({
                 </span>
 
                 <Button
-                  aria-label="Incluir esta duda en el muro de estudiantes"
+                  aria-label={response.is_visible_to_students
+                    ? 'Excluir esta duda del muro de estudiantes'
+                    : 'Incluir esta duda en el muro de estudiantes'}
                   aria-pressed={response.is_visible_to_students}
                   className="min-h-10 px-3 text-xs"
-                  disabled={isStudentVisibilityDisabled || Boolean(updatingResponseId)}
+                  disabled={Boolean(updatingResponseId)}
                   isLoading={isUpdating}
                   onClick={() => void onStudentVisibilityChange?.(
                     response.id,

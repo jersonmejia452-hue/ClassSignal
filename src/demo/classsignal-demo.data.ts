@@ -15,6 +15,8 @@ export const DEMO_COURSE: Course = {
   subject: 'Cálculo vectorial',
   description:
     'Escenario de demostración para observar cómo evoluciona la comprensión del curso.',
+  enrollment_code: 'A2B3C4DF',
+  enrollment_open: true,
   created_at: '2026-06-20T15:00:00.000Z',
   updated_at: '2026-06-20T15:00:00.000Z',
 }

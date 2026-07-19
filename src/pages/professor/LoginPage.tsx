@@ -3,22 +3,16 @@ import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, PlayCircle, RadioTower, Shi
 import { Link, Navigate, useLocation } from 'react-router-dom'
 
 import { Alert } from '../../components/ui/Alert'
+import { AccountAccessError } from '../../components/auth/AccountAccessError'
 import { Brand } from '../../components/ui/Brand'
 import { Button } from '../../components/ui/Button'
 import { Field } from '../../components/ui/Field'
 import { LoadingScreen } from '../../components/ui/LoadingScreen'
 import { useAuth } from '../../context/AuthContext'
-import { cn } from '../../lib/cn'
 import { getAuthErrorMessage } from '../../lib/errors'
-import { env } from '../../lib/env'
 import { authSchema } from '../../schemas/auth'
-import {
-  signInProfessor,
-  signUpProfessor,
-} from '../../services/auth.service'
+import { signInProfessor } from '../../services/auth.service'
 import type { LoginLocationState } from '../../types/navigation'
-
-type AuthMode = 'signin' | 'signup'
 
 interface FormErrors {
   email?: string
@@ -26,36 +20,25 @@ interface FormErrors {
 }
 
 export function LoginPage() {
-  const { user, isLoading: isRestoringSession } = useAuth()
+  const { user, role, isLoading: isRestoringSession } = useAuth()
   const location = useLocation()
   const state = location.state as LoginLocationState | null
   const destination = state?.from?.pathname || '/profesor'
-  const signupEnabled = env?.VITE_PROFESSOR_SIGNUP_ENABLED ?? false
-
-  const [mode, setMode] = useState<AuthMode>('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [errors, setErrors] = useState<FormErrors>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
-  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   if (isRestoringSession) return <LoadingScreen label="Comprobando tu acceso…" />
-  if (user) return <Navigate to={destination} replace />
-
-  const changeMode = (nextMode: AuthMode) => {
-    if (nextMode === 'signup' && !signupEnabled) return
-    setMode(nextMode)
-    setErrors({})
-    setSubmitError(null)
-    setConfirmationEmail(null)
-  }
+  if (user && role === 'student') return <Navigate to="/estudiante" replace />
+  if (user && role === 'professor') return <Navigate to={destination} replace />
+  if (user && !role) return <AccountAccessError />
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSubmitError(null)
-    setConfirmationEmail(null)
 
     const result = authSchema.safeParse({ email, password })
     if (!result.success) {
@@ -71,14 +54,7 @@ export function LoginPage() {
     setIsSubmitting(true)
 
     try {
-      if (mode === 'signin') {
-        await signInProfessor(result.data)
-      } else {
-        const data = await signUpProfessor(result.data)
-        if (!data.session) {
-          setConfirmationEmail(result.data.email)
-        }
-      }
+      await signInProfessor(result.data)
     } catch (error) {
       setSubmitError(getAuthErrorMessage(error))
     } finally {
@@ -168,50 +144,17 @@ export function LoginPage() {
             Espacio docente
           </p>
           <h1 className="mt-2 text-3xl font-black tracking-[-0.035em] text-[#071a2b] sm:text-4xl">
-            {mode === 'signin' ? 'Vuelve a tus cursos' : 'Empieza con ClassSignal'}
+            Vuelve a tus cursos
           </h1>
           <p className="mt-3 leading-7 text-slate-600">
-            {mode === 'signin'
-              ? 'Entra para abrir una clase y ver sus señales en tiempo real.'
-              : 'Crea tu cuenta docente y prepara tu primer curso.'}
+            Entra para abrir una clase y ver sus señales en tiempo real.
           </p>
 
-          {signupEnabled ? (
-            <div className="mt-7 grid grid-cols-2 rounded-2xl border border-slate-200 bg-slate-100/80 p-1" role="group" aria-label="Tipo de acceso">
-              {(['signin', 'signup'] as AuthMode[]).map((item) => (
-                <button
-                  aria-pressed={mode === item}
-                  className={cn(
-                    'min-h-11 rounded-xl px-3 text-sm font-extrabold transition focus-visible:outline-2 focus-visible:outline-blue-600',
-                    mode === item
-                      ? 'bg-white text-[#071a2b] shadow-sm'
-                      : 'text-slate-500 hover:text-slate-800',
-                  )}
-                  key={item}
-                  onClick={() => changeMode(item)}
-                  type="button"
-                >
-                  {item === 'signin' ? 'Iniciar sesión' : 'Crear cuenta'}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-7 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-950">
-              El acceso docente se habilita por invitación para proteger las clases y el presupuesto de análisis.
-            </div>
-          )}
+          <div className="mt-7 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-950">
+            El acceso docente se habilita por invitación para proteger las clases y el presupuesto de análisis.
+          </div>
 
-          {confirmationEmail ? (
-            <div className="mt-7">
-              <Alert title="Revisa tu correo" tone="success">
-                Enviamos un enlace de confirmación a <strong>{confirmationEmail}</strong>. Después de confirmar, vuelve para iniciar sesión.
-              </Alert>
-              <Button className="mt-5" fullWidth onClick={() => changeMode('signin')} variant="secondary">
-                Volver a iniciar sesión
-              </Button>
-            </div>
-          ) : (
-            <form className="mt-7 space-y-5" noValidate onSubmit={handleSubmit}>
+          <form className="mt-7 space-y-5" noValidate onSubmit={handleSubmit}>
               {submitError && <Alert tone="error">{submitError}</Alert>}
 
               <Field error={errors.email} htmlFor="email" label="Correo electrónico">
@@ -238,7 +181,7 @@ export function LoginPage() {
                   <input
                     aria-describedby={errors.password ? 'password-error' : undefined}
                     aria-invalid={Boolean(errors.password)}
-                    autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                    autoComplete="current-password"
                     className="form-input pr-12 pl-12"
                     id="password"
                     onChange={(event) => setPassword(event.target.value)}
@@ -258,11 +201,10 @@ export function LoginPage() {
               </Field>
 
               <Button fullWidth isLoading={isSubmitting} type="submit">
-                {mode === 'signin' ? 'Entrar a mis cursos' : 'Crear cuenta docente'}
+                Entrar a mis cursos
                 {!isSubmitting && <ArrowRight className="size-4" aria-hidden="true" />}
               </Button>
-            </form>
-          )}
+          </form>
 
           <div className="mt-7 rounded-2xl border border-teal-200 bg-teal-50/70 p-4">
             <p className="text-xs font-extrabold tracking-[0.12em] text-teal-800 uppercase">
@@ -285,12 +227,12 @@ export function LoginPage() {
 
           <p className="mt-7 flex items-start justify-center gap-2 text-center text-xs leading-5 text-slate-500">
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-teal-600" aria-hidden="true" />
-            Supabase protege el acceso docente. Tus estudiantes participan sin crear una cuenta.
+            Supabase protege las cuentas. Las señales de los estudiantes siguen siendo anónimas, incluso si guardan sus cursos.
           </p>
           <p className="mt-4 text-center text-sm text-slate-500">
             ¿Eres estudiante?{' '}
-            <Link className="font-extrabold text-blue-700 underline-offset-4 hover:underline" to="/unirse">
-              Ingresa con el código de tu clase
+            <Link className="font-extrabold text-blue-700 underline-offset-4 hover:underline" to="/estudiante/login">
+              Entra a Mis cursos
             </Link>
           </p>
         </div>

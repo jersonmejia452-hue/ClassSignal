@@ -20,7 +20,6 @@ describe('public environment configuration', () => {
     expect(result.data.VITE_SUPABASE_PUBLISHABLE_KEY).toBe(
       validRuntimeEnvironment.VITE_SUPABASE_PUBLISHABLE_KEY,
     )
-    expect(result.data.VITE_PROFESSOR_SIGNUP_ENABLED).toBe(false)
   })
 
   it('lets hosted runtime values override build-time placeholders', () => {

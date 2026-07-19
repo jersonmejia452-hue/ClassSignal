@@ -66,6 +66,21 @@ export async function updateCourse(
   return data as Course
 }
 
+export async function setCourseEnrollmentOpen(
+  courseId: string,
+  enrollmentOpen: boolean,
+) {
+  const { data, error } = await getTeacherSupabase()
+    .from('courses')
+    .update({ enrollment_open: enrollmentOpen })
+    .eq('id', courseId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data as Course
+}
+
 export async function deleteCourse(courseId: string) {
   const { error } = await getTeacherSupabase()
     .from('courses')

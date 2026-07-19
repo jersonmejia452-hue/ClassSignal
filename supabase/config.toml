@@ -44,7 +44,7 @@ file_size_limit = "50MiB"
 [auth]
 enabled = true
 site_url = "http://localhost:5173"
-additional_redirect_urls = ["http://localhost:5173/**"]
+additional_redirect_urls = ["http://localhost:5173/estudiante", "http://localhost:5173/estudiante/**"]
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
 refresh_token_reuse_interval = 10
@@ -80,8 +80,8 @@ deno_version = 2
 [functions.analyze-session]
 verify_jwt = true
 
-# Students have no Auth account. This function performs strict body validation,
-# rate limiting, and a service-role-only atomic RPC before accepting a response.
+# Student accounts are optional for saved courses, but anonymous responses use
+# a separate signed-out client. This function validates and rate-limits them.
 [functions.submit-response]
 verify_jwt = false
 

@@ -3,7 +3,9 @@ import { Navigate, Outlet, createBrowserRouter, RouterProvider } from 'react-rou
 
 import { AppProviders } from './AppProviders'
 import { RequireProfessor } from '../components/auth/RequireProfessor'
+import { RequireStudent } from '../components/auth/RequireStudent'
 import { ProfessorLayout } from '../components/layout/ProfessorLayout'
+import { StudentLayout } from '../components/layout/StudentLayout'
 import { LoadingScreen } from '../components/ui/LoadingScreen'
 import { RouteErrorPage } from '../pages/RouteErrorPage'
 
@@ -61,6 +63,31 @@ const StudentSessionPage = lazy(() =>
     default: module.StudentSessionPage,
   })),
 )
+const StudentLoginPage = lazy(() =>
+  import('../pages/student/StudentLoginPage').then((module) => ({
+    default: module.StudentLoginPage,
+  })),
+)
+const StudentDashboardPage = lazy(() =>
+  import('../pages/student/StudentDashboardPage').then((module) => ({
+    default: module.StudentDashboardPage,
+  })),
+)
+const JoinCoursePage = lazy(() =>
+  import('../pages/student/JoinCoursePage').then((module) => ({
+    default: module.JoinCoursePage,
+  })),
+)
+const StudentCourseDetailPage = lazy(() =>
+  import('../pages/student/StudentCourseDetailPage').then((module) => ({
+    default: module.StudentCourseDetailPage,
+  })),
+)
+const StudentClassDetailPage = lazy(() =>
+  import('../pages/student/StudentClassDetailPage').then((module) => ({
+    default: module.StudentClassDetailPage,
+  })),
+)
 
 function RootProviders() {
   return (
@@ -99,6 +126,10 @@ const router = createBrowserRouter([
         element: <LoginPage />,
       },
       {
+        path: 'estudiante/login',
+        element: <StudentLoginPage />,
+      },
+      {
         element: <RequireProfessor />,
         children: [
           {
@@ -132,6 +163,33 @@ const router = createBrowserRouter([
               {
                 path: 'sesion/:id',
                 element: <SessionDetailPage />,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        element: <RequireStudent />,
+        children: [
+          {
+            path: 'estudiante',
+            element: <StudentLayout />,
+            children: [
+              {
+                index: true,
+                element: <StudentDashboardPage />,
+              },
+              {
+                path: 'unirse',
+                element: <JoinCoursePage />,
+              },
+              {
+                path: 'curso/:courseId',
+                element: <StudentCourseDetailPage />,
+              },
+              {
+                path: 'clase/:sessionId',
+                element: <StudentClassDetailPage />,
               },
             ],
           },

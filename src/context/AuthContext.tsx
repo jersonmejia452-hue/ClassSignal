@@ -3,17 +3,23 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 
-import { signOutProfessor } from '../services/auth.service'
-import { getTeacherSupabase } from '../services/supabase'
+import { signOutAccount } from '../services/auth.service'
+import { getMyProfile } from '../services/profiles.service'
+import { getAccountSupabase } from '../services/supabase'
+import type { AccountProfile, AccountRole } from '../types/domain'
 
 interface AuthContextValue {
   session: Session | null
   user: User | null
+  profile: AccountProfile | null
+  role: AccountRole | null
+  profileError: string | null
   isLoading: boolean
   signOut: () => Promise<void>
 }
@@ -22,23 +28,42 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [profile, setProfile] = useState<AccountProfile | null>(null)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [isAuthLoading, setIsAuthLoading] = useState(true)
+  const [isProfileLoading, setIsProfileLoading] = useState(false)
+  const currentUserIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     let isMounted = true
-    const supabase = getTeacherSupabase()
+    const supabase = getAccountSupabase()
+
+    const applySession = (nextSession: Session | null) => {
+      const nextUserId = nextSession?.user.id ?? null
+      const identityChanged = currentUserIdRef.current !== nextUserId
+      currentUserIdRef.current = nextUserId
+      setSession(nextSession)
+      if (identityChanged) {
+        setProfile(null)
+        setProfileError(null)
+        setIsProfileLoading(Boolean(nextSession))
+      }
+      setIsAuthLoading(false)
+    }
 
     void supabase.auth.getSession().then(({ data, error }) => {
       if (!isMounted) return
-      if (!error) setSession(data.session)
-      setIsLoading(false)
+      if (error) {
+        applySession(null)
+        return
+      }
+      applySession(data.session)
     })
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, nextSession) => {
         if (!isMounted) return
-        setSession(nextSession)
-        setIsLoading(false)
+        applySession(nextSession)
       },
     )
 
@@ -48,14 +73,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  useEffect(() => {
+    let isMounted = true
+    const userId = session?.user.id
+
+    if (!userId) {
+      setProfile(null)
+      setProfileError(null)
+      setIsProfileLoading(false)
+      return () => {
+        isMounted = false
+      }
+    }
+
+    setIsProfileLoading(true)
+    setProfileError(null)
+
+    void getMyProfile(userId)
+      .then((nextProfile) => {
+        if (!isMounted) return
+        if (!nextProfile) {
+          setProfile(null)
+          setProfileError('account_profile_unavailable')
+          return
+        }
+        setProfile(nextProfile)
+      })
+      .catch(() => {
+        if (!isMounted) return
+        setProfile(null)
+        setProfileError('account_profile_unavailable')
+      })
+      .finally(() => {
+        if (isMounted) setIsProfileLoading(false)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [session?.user.id])
+
+  const isLoading = isAuthLoading || isProfileLoading
+
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
       user: session?.user ?? null,
+      profile,
+      role: profile?.role ?? null,
+      profileError,
       isLoading,
-      signOut: signOutProfessor,
+      signOut: signOutAccount,
     }),
-    [isLoading, session],
+    [isLoading, profile, profileError, session],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, PauseCircle, PlayCircle, Radio, RefreshCw } from 'lucide-react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 
@@ -10,6 +10,7 @@ import { StudentQuestionWallControl } from '../../components/questions/StudentQu
 import { ResponseFeed } from '../../components/responses/ResponseFeed'
 import { ResponseSummary } from '../../components/responses/ResponseSummary'
 import { ShareSessionCard } from '../../components/sessions/ShareSessionCard'
+import { SessionPublicationPanel } from '../../components/sessions/SessionPublicationPanel'
 import { SessionStatusBadge } from '../../components/sessions/SessionStatusBadge'
 import { Alert } from '../../components/ui/Alert'
 import { Button } from '../../components/ui/Button'
@@ -20,6 +21,7 @@ import { useSessionResponses } from '../../hooks/useSessionResponses'
 import { cn } from '../../lib/cn'
 import {
   getErrorMessage,
+  getPublicationErrorMessage,
   getSessionLifecycleErrorMessage,
 } from '../../lib/errors'
 import { formatDateTime } from '../../lib/format'
@@ -30,8 +32,16 @@ import {
 import { setPulseQuestionsVisible } from '../../services/pulses.service'
 import { setResponseStudentVisibility } from '../../services/responses.service'
 import {
+  deleteSessionPublication,
+  getSessionPublication,
+  saveSessionPublication,
+} from '../../services/publications.service'
+import {
   analysisResponseLimit,
+  maximumSessionPulseCount,
   type ClassSession,
+  type SessionPublication,
+  type SessionPublicationDraft,
 } from '../../types/domain'
 
 interface DetailLocationState {
@@ -52,6 +62,12 @@ export function SessionDetailPage() {
   const [responseVisibilityError, setResponseVisibilityError] = useState<string | null>(null)
   const [updatingResponseId, setUpdatingResponseId] = useState<string | null>(null)
   const [selectedPulseId, setSelectedPulseId] = useState<string | null>(null)
+  const [publication, setPublication] = useState<SessionPublication | null>(null)
+  const [publicationError, setPublicationError] = useState<string | null>(null)
+  const [isPublicationLoaded, setIsPublicationLoaded] = useState(false)
+  const [isRetryingPublication, setIsRetryingPublication] = useState(false)
+  const currentSessionIdRef = useRef<string | null>(null)
+  const selectedPulseIdRef = useRef<string | null>(null)
 
   const {
     responses,
@@ -88,6 +104,10 @@ export function SessionDetailPage() {
   useEffect(() => {
     if (activePulse?.id) setSelectedPulseId(activePulse.id)
   }, [activePulse?.id])
+
+  useEffect(() => {
+    selectedPulseIdRef.current = selectedPulseId
+  }, [selectedPulseId])
 
   useEffect(() => {
     if (pulses.length === 0) {
@@ -142,6 +162,7 @@ export function SessionDetailPage() {
 
   useEffect(() => {
     let isMounted = true
+    currentSessionIdRef.current = id ?? null
 
     const loadSession = async () => {
       if (!id) {
@@ -153,11 +174,32 @@ export function SessionDetailPage() {
       setIsLoadingSession(true)
       setSession(null)
       setSessionError(null)
+      setPublication(null)
+      setPublicationError(null)
+      setIsPublicationLoaded(false)
+      setIsRetryingPublication(false)
+      setToggleError(null)
+      setIsToggling(false)
+      setQuestionWallError(null)
+      setIsTogglingQuestionWall(false)
+      setResponseVisibilityError(null)
+      setUpdatingResponseId(null)
 
       try {
-        const result = await getSessionById(id)
+        const [result, publicationResult] = await Promise.all([
+          getSessionById(id),
+          getSessionPublication(id)
+            .then((value) => ({ value, error: null }))
+            .catch((error: unknown) => ({
+              value: null,
+              error: getPublicationErrorMessage(error),
+            })),
+        ])
         if (!isMounted) return
         setSession(result)
+        setPublication(publicationResult.value)
+        setPublicationError(publicationResult.error)
+        setIsPublicationLoaded(publicationResult.error === null)
       } catch (error) {
         if (!isMounted) return
         setSessionError(
@@ -172,47 +214,140 @@ export function SessionDetailPage() {
 
     return () => {
       isMounted = false
+      if (currentSessionIdRef.current === id) {
+        currentSessionIdRef.current = null
+      }
     }
   }, [id])
 
+  const savePublication = async (values: SessionPublicationDraft) => {
+    if (!session) return
+    const targetSessionId = session.id
+    setPublicationError(null)
+
+    try {
+      const savedPublication = await saveSessionPublication(targetSessionId, values)
+      if (currentSessionIdRef.current === targetSessionId) {
+        setPublication(savedPublication)
+      }
+    } catch (error) {
+      const message = getPublicationErrorMessage(error)
+      if (currentSessionIdRef.current === targetSessionId) {
+        setPublicationError(message)
+      }
+      throw error
+    }
+  }
+
+  const retryPublication = async () => {
+    if (!session) return
+    const targetSessionId = session.id
+    setIsRetryingPublication(true)
+    setPublicationError(null)
+
+    try {
+      const result = await getSessionPublication(targetSessionId)
+      if (currentSessionIdRef.current === targetSessionId) {
+        setPublication(result)
+        setIsPublicationLoaded(true)
+      }
+    } catch (error) {
+      if (currentSessionIdRef.current === targetSessionId) {
+        setPublicationError(getPublicationErrorMessage(error))
+      }
+    } finally {
+      if (currentSessionIdRef.current === targetSessionId) {
+        setIsRetryingPublication(false)
+      }
+    }
+  }
+
+  const removePublication = async () => {
+    if (!session) return
+    const targetSessionId = session.id
+    setPublicationError(null)
+
+    try {
+      await deleteSessionPublication(targetSessionId)
+      if (currentSessionIdRef.current === targetSessionId) {
+        setPublication(null)
+      }
+    } catch (error) {
+      const message = getPublicationErrorMessage(error)
+      if (currentSessionIdRef.current === targetSessionId) {
+        setPublicationError(message)
+      }
+      throw error
+    }
+  }
+
   const toggleSession = async () => {
     if (!session) return
+    if (!session.is_active && pulses.length >= maximumSessionPulseCount) return
+    const targetSessionId = session.id
     setIsToggling(true)
     setToggleError(null)
 
     try {
-      setSession(await setSessionActive(session.id, !session.is_active))
-      void refreshPulses()
-    } catch (error) {
-      setToggleError(
-        getSessionLifecycleErrorMessage(
-          error,
-          'No pudimos cambiar el estado de la clase.',
-        ),
+      const updatedSession = await setSessionActive(
+        targetSessionId,
+        !session.is_active,
       )
+      if (currentSessionIdRef.current === targetSessionId) {
+        setSession(updatedSession)
+        void refreshPulses()
+      }
+    } catch (error) {
+      if (currentSessionIdRef.current === targetSessionId) {
+        setToggleError(
+          getSessionLifecycleErrorMessage(
+            error,
+            'No pudimos cambiar el estado de la clase.',
+          ),
+        )
+      }
     } finally {
-      setIsToggling(false)
+      if (currentSessionIdRef.current === targetSessionId) {
+        setIsToggling(false)
+      }
     }
   }
 
   const toggleQuestionWall = async () => {
     if (!session?.is_active || !selectedPulse?.is_active) return
+    const targetSessionId = session.id
+    const targetPulseId = selectedPulse.id
 
     setIsTogglingQuestionWall(true)
     setQuestionWallError(null)
 
     try {
       await setPulseQuestionsVisible(
-        selectedPulse.id,
+        targetPulseId,
         !selectedPulse.questions_visible_to_students,
       )
-      await refreshPulses()
+      if (
+        currentSessionIdRef.current === targetSessionId
+        && selectedPulseIdRef.current === targetPulseId
+      ) {
+        await refreshPulses()
+      }
     } catch (error) {
-      setQuestionWallError(
-        getErrorMessage(error, 'No pudimos cambiar la visibilidad de las dudas.'),
-      )
+      if (
+        currentSessionIdRef.current === targetSessionId
+        && selectedPulseIdRef.current === targetPulseId
+      ) {
+        setQuestionWallError(
+          getErrorMessage(error, 'No pudimos cambiar la visibilidad de las dudas.'),
+        )
+      }
     } finally {
-      setIsTogglingQuestionWall(false)
+      if (
+        currentSessionIdRef.current === targetSessionId
+        && selectedPulseIdRef.current === targetPulseId
+      ) {
+        setIsTogglingQuestionWall(false)
+      }
     }
   }
 
@@ -220,18 +355,26 @@ export function SessionDetailPage() {
     responseId: string,
     isVisibleToStudents: boolean,
   ) => {
+    if (!session) return
+    const targetSessionId = session.id
     setUpdatingResponseId(responseId)
     setResponseVisibilityError(null)
 
     try {
       await setResponseStudentVisibility(responseId, isVisibleToStudents)
-      await refreshResponses()
+      if (currentSessionIdRef.current === targetSessionId) {
+        await refreshResponses()
+      }
     } catch (error) {
-      setResponseVisibilityError(
-        getErrorMessage(error, 'No pudimos cambiar la visibilidad de esta duda.'),
-      )
+      if (currentSessionIdRef.current === targetSessionId) {
+        setResponseVisibilityError(
+          getErrorMessage(error, 'No pudimos cambiar la visibilidad de esta duda.'),
+        )
+      }
     } finally {
-      setUpdatingResponseId(null)
+      if (currentSessionIdRef.current === targetSessionId) {
+        setUpdatingResponseId(null)
+      }
     }
   }
 
@@ -270,6 +413,7 @@ export function SessionDetailPage() {
   const hasRealtimeError = [responsesRealtimeStatus, pulsesRealtimeStatus].some(
     (status) => ['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status),
   )
+  const hasReachedPulseLimit = pulses.length >= maximumSessionPulseCount
 
   return (
     <div>
@@ -305,7 +449,9 @@ export function SessionDetailPage() {
 
         <Button
           className="shrink-0"
-          disabled={isTogglingQuestionWall || isOpeningPulse}
+          disabled={isTogglingQuestionWall
+            || isOpeningPulse
+            || (!session.is_active && (isLoadingPulses || hasReachedPulseLimit))}
           isLoading={isToggling}
           onClick={toggleSession}
           variant={session.is_active ? 'danger' : 'secondary'}
@@ -315,20 +461,57 @@ export function SessionDetailPage() {
           ) : (
             <PlayCircle className="size-4" aria-hidden="true" />
           )}
-          {session.is_active ? 'Finalizar clase' : 'Reactivar clase'}
+          {session.is_active
+            ? 'Finalizar clase'
+            : hasReachedPulseLimit
+              ? 'Ciclo completado'
+              : 'Reactivar clase'}
         </Button>
       </div>
 
       {toggleError && <Alert className="mt-5" tone="error">{toggleError}</Alert>}
       {!session.is_active && (
         <Alert className="mt-5">
-          La clase está finalizada. El enlace seguirá mostrando el tema, pero no aceptará respuestas hasta que la reactives.
+          {hasReachedPulseLimit
+            ? 'La clase completó el máximo de seis pulsos. Conserva su archivo o crea una clase nueva para continuar.'
+            : 'La clase está finalizada. El enlace seguirá mostrando el tema, pero no aceptará respuestas hasta que la reactives.'}
         </Alert>
       )}
 
       <div className="mt-8">
         <ShareSessionCard session={session} />
       </div>
+
+      {session.course_id ? (
+        <div className="mt-5">
+          {isPublicationLoaded ? (
+            <SessionPublicationPanel
+              error={publicationError}
+              key={session.id}
+              onDelete={removePublication}
+              onSave={savePublication}
+              publication={publication}
+            />
+          ) : (
+            <Alert title="No pudimos comprobar la publicación" tone="error">
+              <p>{publicationError || 'No pudimos cargar el archivo estudiantil de esta clase.'}</p>
+              <Button
+                className="mt-4"
+                isLoading={isRetryingPublication}
+                onClick={() => void retryPublication()}
+                variant="secondary"
+              >
+                <RefreshCw className="size-4" aria-hidden="true" />
+                Reintentar
+              </Button>
+            </Alert>
+          )}
+        </div>
+      ) : (
+        <Alert className="mt-5" title="Publicación no disponible">
+          Asocia la clase a un curso para conservar un resumen y materiales en el portal estudiantil.
+        </Alert>
+      )}
 
       <div className="mt-5">
         <SessionPulseControl
@@ -441,7 +624,6 @@ export function SessionDetailPage() {
               </div>
             ) : (
               <ResponseFeed
-                isStudentVisibilityDisabled={!session.is_active || !selectedPulse.is_active}
                 onStudentVisibilityChange={updateResponseVisibility}
                 responses={selectedResponses}
                 updatingResponseId={updatingResponseId}

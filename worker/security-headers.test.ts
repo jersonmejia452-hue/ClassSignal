@@ -6,8 +6,9 @@ import worker, {
   applySecurityHeaders,
   createRuntimeConfigScript,
   createContentSecurityPolicy,
-  runtimeConfigPath,
 } from './index'
+
+const runtimeConfigPath = '/__classsignal-config.js'
 
 const supabaseUrl = 'https://project-ref.supabase.co'
 
