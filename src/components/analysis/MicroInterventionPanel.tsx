@@ -81,6 +81,7 @@ export function MicroInterventionPanel({
   const copyResetTimer = useRef<number | null>(null)
   const previousArtifactId = useRef<string | null>(null)
   const hadConfirmation = useRef(false)
+  const suppressConfirmationFocusRestore = useRef(false)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>('idle')
   const [isConfirmingPulse, setIsConfirmingPulse] = useState(false)
 
@@ -89,8 +90,22 @@ export function MicroInterventionPanel({
   }, [])
 
   useEffect(() => {
-    if (!artifact || previousArtifactId.current === artifact.id) return
-    previousArtifactId.current = artifact.id
+    const artifactId = artifact?.id ?? null
+    if (previousArtifactId.current === artifactId) return
+    previousArtifactId.current = artifactId
+    if (copyResetTimer.current !== null) {
+      window.clearTimeout(copyResetTimer.current)
+      copyResetTimer.current = null
+    }
+    setCopyState('idle')
+    if (isConfirmingPulse) {
+      suppressConfirmationFocusRestore.current = true
+      setIsConfirmingPulse(false)
+    } else {
+      suppressConfirmationFocusRestore.current = false
+      hadConfirmation.current = false
+    }
+    if (!artifact) return
     titleRef.current?.focus({ preventScroll: true })
     const prefersReducedMotion = window.matchMedia(
       '(prefers-reduced-motion: reduce)',
@@ -99,9 +114,16 @@ export function MicroInterventionPanel({
       behavior: prefersReducedMotion ? 'auto' : 'smooth',
       block: 'start',
     })
-  }, [artifact])
+  }, [artifact, isConfirmingPulse])
 
   useEffect(() => {
+    if (suppressConfirmationFocusRestore.current) {
+      if (!isConfirmingPulse) {
+        suppressConfirmationFocusRestore.current = false
+        hadConfirmation.current = false
+      }
+      return
+    }
     if (isConfirmingPulse) {
       hadConfirmation.current = true
       document.getElementById(confirmationId)?.focus()
@@ -113,8 +135,10 @@ export function MicroInterventionPanel({
 
   const copyIntervention = async () => {
     if (!artifact?.result) return
+    const artifactId = artifact.id
     try {
       await writeClipboardText(formatMicroInterventionForClipboard(artifact.result))
+      if (previousArtifactId.current !== artifactId) return
       setCopyState('copied')
       if (copyResetTimer.current !== null) window.clearTimeout(copyResetTimer.current)
       copyResetTimer.current = window.setTimeout(() => {
@@ -122,6 +146,7 @@ export function MicroInterventionPanel({
         copyResetTimer.current = null
       }, 2_200)
     } catch {
+      if (previousArtifactId.current !== artifactId) return
       setCopyState('error')
     }
   }

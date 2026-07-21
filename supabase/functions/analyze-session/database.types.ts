@@ -321,6 +321,48 @@ export type Database = {
           isSetofReturn: false;
         };
       };
+      finalize_session_analysis: {
+        Args: {
+          p_analysis_id: string;
+          p_error_message: string | null;
+          p_professor_id: string;
+          p_result: Json | null;
+          p_status: string;
+          p_telemetry: Json | null;
+        };
+        Returns: {
+          cached_input_tokens: number | null;
+          completed_at: string | null;
+          created_at: string;
+          duration_ms: number | null;
+          error_message: string | null;
+          estimated_cost_usd: number | null;
+          id: string;
+          input_tokens: number | null;
+          model: string;
+          output_tokens: number | null;
+          pricing_version: string | null;
+          professor_id: string;
+          pulse_id: string;
+          prompt_version: number;
+          provider_request_id: string | null;
+          provider_response_id: string | null;
+          reasoning_tokens: number | null;
+          response_count: number;
+          result: Json | null;
+          session_id: string;
+          source_fingerprint: string;
+          source_latest_response_at: string;
+          status: string;
+          total_tokens: number | null;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "session_analyses";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
       get_public_session: {
         Args: { p_code: string };
         Returns: {

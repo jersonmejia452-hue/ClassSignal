@@ -112,6 +112,67 @@ export function assertBodyByteLength(rawBody: string) {
   }
 }
 
+function artifactBodyTooLarge(): PublicFunctionError {
+  return new PublicFunctionError(
+    413,
+    "artifact_request_too_large",
+    "La solicitud del artefacto es demasiado grande.",
+  );
+}
+
+/**
+ * Reads at most MAX_ARTIFACT_BODY_BYTES from the request stream.
+ * Content-Length is only an early rejection hint; the stream limit remains the
+ * authority because clients can omit or falsify that header.
+ */
+export async function readArtifactRequestBody(request: Request) {
+  const declaredLength = request.headers.get("content-length")?.trim();
+  if (declaredLength && /^\d+$/.test(declaredLength)) {
+    try {
+      if (BigInt(declaredLength) > BigInt(MAX_ARTIFACT_BODY_BYTES)) {
+        throw artifactBodyTooLarge();
+      }
+    } catch (error) {
+      if (error instanceof PublicFunctionError) throw error;
+      // An unparsable header is untrusted metadata. The bounded stream read
+      // below still enforces the actual body limit.
+    }
+  }
+
+  if (!request.body) return "";
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (totalBytes + value.byteLength > MAX_ARTIFACT_BODY_BYTES) {
+        try {
+          await reader.cancel();
+        } catch {
+          // Cancellation is best effort; the bounded reader never retains the
+          // oversized chunk.
+        }
+        throw artifactBodyTooLarge();
+      }
+      chunks.push(value);
+      totalBytes += value.byteLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(body);
+}
+
 export function parseArtifactRequestBody(rawBody: string): ArtifactRequest {
   assertBodyByteLength(rawBody);
 

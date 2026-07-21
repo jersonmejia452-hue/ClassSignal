@@ -6,12 +6,16 @@ import {
   buildPulseAggregates,
   createSourceFingerprint,
   isAnalysisCurrent,
-  MAX_ARTIFACT_BODY_BYTES,
   MAX_PULSES,
   MAX_RESPONSES_PER_PULSE,
   parseArtifactRequestBody,
   projectConfusionMap,
+  readArtifactRequestBody,
 } from "./artifact-core.ts";
+import {
+  type ArtifactReservation,
+  resolveArtifactReservation,
+} from "./artifact-reservation.ts";
 import type { Database, Json, SessionAiArtifactRow } from "./database.types.ts";
 import {
   getDatabaseErrorMessage,
@@ -29,6 +33,7 @@ import type {
 } from "./types.ts";
 
 const ARTIFACTS_PER_HOUR = 12;
+const PENDING_ARTIFACT_TIMEOUT_MS = 10 * 60 * 1_000;
 
 interface SessionRow {
   id: string;
@@ -59,8 +64,6 @@ interface AnalysisRow {
   created_at: string;
   completed_at: string | null;
 }
-
-type ArtifactRpcOutcome = "created" | "cached" | "in_progress";
 
 function jsonResponse(body: unknown, status = 200) {
   return Response.json(body, {
@@ -109,7 +112,7 @@ function parseArtifactRow(value: unknown): SessionAiArtifactRow {
 }
 
 function parseArtifactRpcResult(value: unknown): {
-  outcome: ArtifactRpcOutcome;
+  outcome: ArtifactReservation<SessionAiArtifactRow>["outcome"];
   artifact: SessionAiArtifactRow;
 } {
   if (
@@ -243,21 +246,9 @@ const generateSessionArtifact = withSupabase<Database>(
         );
       }
 
-      const contentLength = Number(
-        request.headers.get("content-length") ?? "0",
+      const artifactRequest = parseArtifactRequestBody(
+        await readArtifactRequestBody(request),
       );
-      if (
-        Number.isFinite(contentLength) &&
-        contentLength > MAX_ARTIFACT_BODY_BYTES
-      ) {
-        throw new PublicFunctionError(
-          413,
-          "artifact_request_too_large",
-          "La solicitud del artefacto es demasiado grande.",
-        );
-      }
-
-      const artifactRequest = parseArtifactRequestBody(await request.text());
       const configuration = readArtifactConfiguration(artifactRequest.kind);
 
       const { data: profile, error: profileError } = await context.supabase
@@ -448,28 +439,100 @@ const generateSessionArtifact = withSupabase<Database>(
       }
 
       const sourceFingerprint = await createSourceFingerprint(source);
-      const openAIKey = readOpenAIKey();
-      const { data: rpcData, error: rpcError } = await context.supabaseAdmin
-        .rpc(
-          "create_session_ai_artifact",
-          {
-            p_session_id: session.id,
-            p_pulse_id: pulseId,
-            p_professor_id: professorId,
-            p_kind: artifactRequest.kind,
-            p_model: configuration.model,
-            p_reasoning_effort: configuration.reasoningEffort,
-            p_prompt_version: configuration.promptVersion,
-            p_source_fingerprint: sourceFingerprint,
-            p_source_analysis_id: sourceAnalysisId,
-            p_concept_index: conceptIndex,
-            p_force_regenerate: artifactRequest.regenerate,
-            p_hourly_limit: ARTIFACTS_PER_HOUR,
-            p_source_captured_at: sourceCapturedAt,
-          },
-        );
-      if (rpcError) throw mapArtifactRpcError(rpcError) ?? rpcError;
-      const reservation = parseArtifactRpcResult(rpcData);
+      const findReusable = async (): Promise<
+        ArtifactReservation<SessionAiArtifactRow> | null
+      > => {
+        if (!artifactRequest.regenerate) {
+          let cachedQuery = context.supabase
+            .from("session_ai_artifacts")
+            .select("*")
+            .eq("session_id", session.id)
+            .eq("professor_id", professorId)
+            .eq("kind", artifactRequest.kind)
+            .eq("status", "completed")
+            .eq("model", configuration.model)
+            .eq("reasoning_effort", configuration.reasoningEffort)
+            .eq("prompt_version", configuration.promptVersion)
+            .eq("source_fingerprint", sourceFingerprint);
+          cachedQuery = pulseId === null
+            ? cachedQuery.is("pulse_id", null)
+            : cachedQuery.eq("pulse_id", pulseId);
+          cachedQuery = sourceAnalysisId === null
+            ? cachedQuery.is("source_analysis_id", null)
+            : cachedQuery.eq("source_analysis_id", sourceAnalysisId);
+          cachedQuery = conceptIndex === null
+            ? cachedQuery.is("concept_index", null)
+            : cachedQuery.eq("concept_index", conceptIndex);
+
+          const { data, error } = await cachedQuery
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (error) throw error;
+          if (data) {
+            return { outcome: "cached", artifact: parseArtifactRow(data) };
+          }
+        }
+
+        let pendingQuery = context.supabase
+          .from("session_ai_artifacts")
+          .select("*")
+          .eq("session_id", session.id)
+          .eq("professor_id", professorId)
+          .eq("kind", artifactRequest.kind)
+          .eq("status", "pending")
+          .gt(
+            "created_at",
+            new Date(Date.now() - PENDING_ARTIFACT_TIMEOUT_MS).toISOString(),
+          );
+        pendingQuery = pulseId === null
+          ? pendingQuery.is("pulse_id", null)
+          : pendingQuery.eq("pulse_id", pulseId);
+        pendingQuery = sourceAnalysisId === null
+          ? pendingQuery.is("source_analysis_id", null)
+          : pendingQuery.eq("source_analysis_id", sourceAnalysisId);
+        pendingQuery = conceptIndex === null
+          ? pendingQuery.is("concept_index", null)
+          : pendingQuery.eq("concept_index", conceptIndex);
+
+        const { data, error } = await pendingQuery
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (error) throw error;
+        return data
+          ? { outcome: "in_progress", artifact: parseArtifactRow(data) }
+          : null;
+      };
+
+      const { reservation, providerKey } = await resolveArtifactReservation({
+        findReusable,
+        readProviderKey: readOpenAIKey,
+        reservePaidWork: async () => {
+          const { data, error } = await context.supabaseAdmin.rpc(
+            "create_session_ai_artifact",
+            {
+              p_session_id: session.id,
+              p_pulse_id: pulseId,
+              p_professor_id: professorId,
+              p_kind: artifactRequest.kind,
+              p_model: configuration.model,
+              p_reasoning_effort: configuration.reasoningEffort,
+              p_prompt_version: configuration.promptVersion,
+              p_source_fingerprint: sourceFingerprint,
+              p_source_analysis_id: sourceAnalysisId,
+              p_concept_index: conceptIndex,
+              p_force_regenerate: artifactRequest.regenerate,
+              p_hourly_limit: ARTIFACTS_PER_HOUR,
+              p_source_captured_at: sourceCapturedAt,
+            },
+          );
+          if (error) throw mapArtifactRpcError(error) ?? error;
+          return parseArtifactRpcResult(data);
+        },
+      });
 
       if (reservation.outcome === "cached") {
         return jsonResponse({ artifact: reservation.artifact, cached: true });
@@ -486,8 +549,11 @@ const generateSessionArtifact = withSupabase<Database>(
       }
 
       artifactId = reservation.artifact.id;
+      if (!providerKey) {
+        throw new Error("Created artifact reservation is missing provider key");
+      }
       const { result, telemetry } = await requestArtifact(
-        openAIKey,
+        providerKey,
         source,
         configuration,
       );

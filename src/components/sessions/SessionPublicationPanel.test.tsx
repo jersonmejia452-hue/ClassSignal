@@ -77,18 +77,24 @@ function renderPanel(options: {
   const onSave = options.onSave ?? vi.fn(
     async (_draft: SessionPublicationDraft): Promise<unknown> => undefined,
   )
-  render(
+  const renderWithSourcesReady = (sourcesReady = options.sourcesReady) => (
     <SessionPublicationPanel
       onDelete={vi.fn().mockResolvedValue(undefined)}
       onRefreshSources={options.onRefreshSources}
       onSave={onSave}
       publication={publication}
       sessionId={sessionId}
-      sourcesReady={options.sourcesReady}
+      sourcesReady={sourcesReady}
       sourceUpdatedAt={options.sourceUpdatedAt}
-    />,
+    />
   )
-  return { onSave }
+  const view = render(renderWithSourcesReady())
+  return {
+    onSave,
+    rerenderSourcesReady: (sourcesReady: boolean) => {
+      view.rerender(renderWithSourcesReady(sourcesReady))
+    },
+  }
 }
 
 describe('SessionPublicationPanel AI draft', () => {
@@ -180,6 +186,23 @@ describe('SessionPublicationPanel AI draft', () => {
 
     await user.click(screen.getByRole('button', { name: 'Reintentar fuentes' }))
     expect(onRefreshSources).toHaveBeenCalledOnce()
+  })
+
+  it('bloquea una confirmación abierta si las fuentes dejan de estar listas', async () => {
+    const user = userEvent.setup()
+    const { onSave, rerenderSourcesReady } = renderPanel({ sourcesReady: true })
+
+    await user.click(screen.getByRole('button', { name: 'Aplicar al formulario' }))
+    const confirmButton = screen.getByRole('button', { name: 'Sí, aplicar localmente' })
+    expect(confirmButton).toBeEnabled()
+
+    rerenderSourcesReady(false)
+
+    expect(screen.getByText('Actualizando fuentes de la clase')).toBeInTheDocument()
+    expect(confirmButton).toBeDisabled()
+    await user.click(confirmButton)
+    expect(screen.getByLabelText('Resumen de la clase')).toHaveValue(publication.summary)
+    expect(onSave).not.toHaveBeenCalled()
   })
 
   it('cancela la confirmación con Escape y devuelve el foco', async () => {

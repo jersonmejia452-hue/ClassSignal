@@ -23,6 +23,7 @@ export type ArtifactRequest =
 export interface ArtifactTelemetry {
   input_tokens: number | null;
   cached_input_tokens: number | null;
+  cache_write_input_tokens: number | null;
   output_tokens: number | null;
   reasoning_tokens: number | null;
   total_tokens: number | null;
