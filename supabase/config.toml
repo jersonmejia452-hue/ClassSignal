@@ -80,6 +80,9 @@ deno_version = 2
 [functions.analyze-session]
 verify_jwt = true
 
+[functions.generate-session-artifact]
+verify_jwt = true
+
 # Student accounts are optional for saved courses, but anonymous responses use
 # a separate signed-out client. This function validates and rate-limits them.
 [functions.submit-response]

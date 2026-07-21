@@ -33,6 +33,9 @@ Esta rebanada vertical incluye:
 - modo proyector con QR, código y resultados del pulso activo, sin mostrar dudas individuales;
 - mapa de confusión bajo demanda con GPT‑5.6 y Structured Outputs;
 - historial de análisis, caché, tokens, duración, costo estimado y recomendaciones docentes;
+- borrador de publicación con GPT‑5.6, siempre separado del formulario y aplicado únicamente tras revisión local;
+- microintervenciones colectivas de 3–5 minutos por concepto, con copia y apertura confirmada del siguiente pulso;
+- cierre determinista del ciclo mediante comparación agregada del pulso posterior, sin seguimiento individual ni atribución causal;
 - demo pública guiada en `/demo`, con 20 estudiantes y resultados precargados, sin escrituras ni consumo de API;
 - validación en cliente con Zod y restricciones equivalentes en PostgreSQL;
 - migración con índices, privilegios explícitos y políticas RLS;
@@ -46,6 +49,18 @@ La IA no se ejecuta automáticamente: un profesor autenticado debe pulsar **Anal
 Una sesión activa tiene exactamente un pulso activo. La creación de la clase abre Pulso 1; **Abrir nuevo pulso** cierra el actual y crea el ordinal siguiente en una operación atómica. Se exige al menos una respuesta aceptada en el pulso actual y nunca se puede superar el ordinal 6. Los pulsos cerrados son inmutables. Finalizar la clase cierra su pulso; reactivarla crea uno nuevo en lugar de modificar el anterior.
 
 Cada pulso reutiliza los tres estados de comprensión y la duda opcional. No contiene preguntas, respuestas correctas, temporizadores ni actividades generadas. La comparación usa porcentajes agregados y puntos porcentuales entre pulsos consecutivos; no intenta seguir estudiantes individuales.
+
+### Copiloto docente con GPT‑5.6
+
+El copiloto tiene tres piezas deliberadamente distintas:
+
+1. **Borrador:** propone resumen, tipos de práctica y notas que el profesor debe confirmar. Nunca publica, no toca el muro y sólo modifica el estado local del formulario al pulsar **Aplicar al formulario**. El guardado sigue siendo una acción manual separada.
+2. **Microintervención:** parte de un concepto de un mapa vigente y genera una orientación colectiva de 3–5 minutos. Incluye objetivo, ejemplo, pasos, comprobación y seguimiento; no califica ni diagnostica personas.
+3. **Resultado:** compara en TypeScript los porcentajes agregados del pulso fuente y el siguiente. Cada pulso conserva su propio denominador; la secuencia temporal no se presenta como prueba de causalidad.
+
+`generate-session-artifact` valida JWT, rol y propiedad, deriva las fuentes desde Supabase y reserva el trabajo mediante `create_session_ai_artifact`. Publicaciones usan sólo contexto académico, conteos/porcentajes, comparaciones y proyecciones de mapas completados; microintervenciones usan el agregado y el concepto seleccionado del mapa vigente. Las proyecciones eliminan `evidence`, textos individuales, correos, UUID, identificadores anónimos, matrículas, URLs y secretos antes de construir la solicitud. Los textos académicos se tratan como datos no confiables. Responses API usa `store:false`, JSON Schema estricto y no tiene fallback a un modelo más costoso.
+
+La tabla `session_ai_artifacts` conserva filas terminales inmutables, fingerprint, configuración efectiva, telemetría, costo estimado y un límite temporal conservador de las fuentes. Sólo el profesor propietario puede leerlas; el navegador no puede crear ni actualizar artefactos. Reserva y finalización comparten un bloqueo por objetivo para evitar trabajo pagado duplicado. Una fuente nueva marca visualmente el resultado como desactualizado y obliga a regenerar antes de aplicar o abrir el siguiente pulso.
 
 ## Stack
 
@@ -104,7 +119,9 @@ Las migraciones crean:
 - una RPC docente que devuelve únicamente el conteo de matrículas del curso propio;
 - la publicación de `public.responses` en `supabase_realtime`;
 - `public.session_analyses`, con historial inmutable, caché de snapshots y lectura limitada al profesor propietario;
+- `public.session_ai_artifacts`, con historial inmutable de borradores e intervenciones, RLS docente y escritura exclusiva de `service_role`;
 - telemetría de tokens/costo y cuotas atómicas de análisis;
+- RPC exclusivas de `service_role` para reservar y finalizar artefactos bajo caché, deduplicación y cuotas compartidas con los análisis;
 - una RPC exclusiva de `service_role` para aceptar respuestas desde la Edge Function sin conceder `INSERT` al navegador anónimo.
 
 Ejecuta los archivos de `supabase/migrations` en orden. No vuelvas a ejecutar la migración inicial completa sobre el mismo esquema: administra cambios posteriores con nuevas migraciones. La migración de rondas crea Pulso 1 para cada clase existente y asigna allí sus respuestas y análisis previos antes de exigir `pulse_id` en nuevas escrituras.
@@ -164,6 +181,9 @@ VITE_SUPABASE_URL=https://your-project-ref.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_your_key_here
 VITE_PUBLIC_APP_URL=http://localhost:5173
 OPENAI_API_KEY=sk-your-openai-api-key
+OPENAI_MODEL_ROUTINE=gpt-5.6-luna
+OPENAI_PUBLICATION_DRAFT_REASONING_EFFORT=medium
+OPENAI_MICRO_INTERVENTION_REASONING_EFFORT=high
 RESPONSE_HMAC_SECRET=replace-with-32-random-bytes
 TURNSTILE_SITE_KEY=replace-with-your-turnstile-site-key
 TURNSTILE_SECRET_KEY=replace-with-your-turnstile-secret-key
@@ -187,7 +207,9 @@ sirve como HTML. Esto evita que una capa de assets entregue la portada antes
 de aplicar CSP, HSTS y las demás cabeceras. El archivo no debe volver a
 publicarse como `index.html` sin comprobar esas cabeceras en producción.
 
-`OPENAI_API_KEY`, `RESPONSE_HMAC_SECRET` y las variables `TURNSTILE_*` son exclusivas del servidor. No forman parte del bundle porque no tienen el prefijo `VITE_`. Para producción, añádelas en **Supabase > Edge Functions > Secrets**; genera 32 bytes aleatorios, codifícalos como base64url (43 o más caracteres) y no reutilices una contraseña. Nunca crees variantes `VITE_` de claves privadas.
+`OPENAI_API_KEY`, `OPENAI_MODEL_ROUTINE`, los dos esfuerzos, `RESPONSE_HMAC_SECRET` y las variables `TURNSTILE_*` son exclusivas del servidor. No forman parte del bundle porque no tienen el prefijo `VITE_`. Para producción, `OPENAI_API_KEY` es el único secreto nuevo obligatorio del copiloto; el modelo y los esfuerzos ya tienen los valores seguros mostrados arriba y sólo deben configurarse si se desea hacer explícita esa política. Añade los secretos en **Supabase > Edge Functions > Secrets**; genera 32 bytes aleatorios, codifícalos como base64url (43 o más caracteres) y no reutilices una contraseña. Nunca crees variantes `VITE_` de claves privadas.
+
+`OPENAI_MODEL_ROUTINE` acepta actualmente sólo `gpt-5.6-luna`. Borradores usan `medium` y microintervenciones `high`; un valor distinto falla cerrado. No existe fallback silencioso a Terra o Sol. `analyze-session` conserva su configuración independiente (`xhigh`, 6.000 tokens) sin reducción.
 
 ```bash
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
@@ -229,13 +251,14 @@ Después de aplicar las migraciones, despliega la función pública de respuesta
 ```bash
 npx supabase functions deploy submit-response --no-verify-jwt
 npx supabase functions deploy analyze-session
+npx supabase functions deploy generate-session-artifact
 ```
 
 La incorporación de rondas cambia el contrato entre base de datos, funciones y navegador, por lo que debe desplegarse en una ventana coordinada:
 
 1. pausa publicaciones del frontend;
 2. aplica todas las migraciones y confirma el backfill hacia Pulso 1;
-3. despliega `submit-response` y `analyze-session`;
+3. despliega `submit-response`, `analyze-session` y `generate-session-artifact`;
 4. publica frontend y worker;
 5. ejecuta una prueba de humo con dos pulsos y el mismo código.
 
@@ -249,7 +272,7 @@ Para desarrollo local, inicia Supabase y sirve la función con el mismo archivo 
 npx supabase functions serve --env-file .env.local
 ```
 
-`analyze-session` conserva su nombre técnico y exige un JWT de profesor válido, pero analiza un solo `pulse_id`. `submit-response` no exige cuenta porque el estudiante es anónimo, pero exige Turnstile, valida sesión y pulso, seudonimiza el identificador por pulso y llama una RPC disponible únicamente para `service_role`; nunca expone credenciales privadas. Si falta Turnstile, su lista de hostnames o el secreto HMAC dedicado, el envío falla cerrado. Si falta `OPENAI_API_KEY`, el resto del MVP sigue funcionando y el panel muestra un error de configuración sin exponer secretos.
+`analyze-session` conserva su nombre técnico y exige un JWT de profesor válido, pero analiza un solo `pulse_id`. `generate-session-artifact` también exige JWT docente; deriva sus fuentes en servidor y nunca recibe texto académico desde el navegador. `submit-response` no exige cuenta porque el estudiante es anónimo, pero exige Turnstile, valida sesión y pulso, seudonimiza el identificador por pulso y llama una RPC disponible únicamente para `service_role`; nunca expone credenciales privadas. Si falta Turnstile, su lista de hostnames o el secreto HMAC dedicado, el envío falla cerrado. Si falta `OPENAI_API_KEY`, el resto del MVP sigue funcionando y los paneles muestran un error de configuración sin exponer secretos.
 
 ## 5. Ejecutar la aplicación
 
@@ -264,10 +287,13 @@ Comandos disponibles:
 ```bash
 npm run dev      # servidor de desarrollo
 npm test         # pruebas unitarias
-npx supabase test db supabase/tests/database # pruebas de permisos y RPC
+npm run test:db  # pgTAP de esquema, permisos, RLS, caché y cuotas
+npm run test:evals # evaluaciones offline, sin red ni clave
 npm run build    # comprobación TypeScript y build de producción
 npm run preview  # vista local del build generado
 ```
+
+Las evaluaciones reales están desactivadas en CI y requieren simultáneamente `RUN_OPENAI_EVALS=1` y `OPENAI_API_KEY`. Para una ejecución acotada: `node supabase/functions/generate-session-artifact/evals/run-openai-evals.mjs --case critical-confusion-chemistry --kind micro_intervention`. Sin opt-in explícito el runner termina antes de llamar a OpenAI. Fixtures y métricas cubren fundamentación, utilidad docente, información inventada, formato, privacidad, latencia, tokens y costo; los resultados JSONL quedan fuera de Git.
 
 ## Rutas
 
@@ -383,7 +409,8 @@ El seed asigna la demo al perfil docente más antiguo y es repetible: la sesión
 - Un profesor solo puede leer respuestas asociadas a pulsos de sus propias sesiones.
 - El pulso histórico usa una RPC `SECURITY INVOKER`, filtra por `auth.uid()` y devuelve el último pulso con respuestas de cada clase; no incluye dudas ni identificadores anónimos.
 - Un profesor solo puede leer análisis de pulsos propios; el navegador no tiene privilegios para insertar ni modificar resultados de IA.
-- La función limita análisis pagados a 12 por hora y 20 por cada ventana de 24 horas por profesor, con un tope global de 200 por ventana de 24 horas. La caché no consume cuota.
+- Un profesor sólo puede leer sus propios artefactos docentes; estudiantes y `anon` no tienen privilegios, y el navegador docente tampoco puede insertarlos ni actualizarlos.
+- Análisis y artefactos comparten el presupuesto: 12 reservas por hora y 20 por cada ventana de 24 horas por profesor, con tope global de 200 por ventana de 24 horas. Una lectura de caché no consume cuota.
 - El portal estudiantil solo devuelve cursos donde existe una matrícula para `auth.uid()`. El estudiante no recibe acceso directo a `course_enrollments`, tablas docentes ni respuestas.
 - El código permanente de curso solo crea matrículas mientras `enrollment_open` esté activo. Un código inválido y uno cerrado producen el mismo error para no revelar la existencia del curso.
 - El archivo de una clase se publica por decisión explícita del profesor. Resumen, recursos y dudas moderadas se entregan mediante RPC acotadas; las dudas permanecen ocultas salvo que `questions_published` esté activo.
@@ -401,6 +428,8 @@ El seed asigna la demo al perfil docente más antiguo y es repetible: la sesión
 - No existe ninguna clave privilegiada en el frontend.
 - La Edge Function de análisis valida JWT, propiedad de la sesión y pertenencia del pulso. Análisis, snapshot y caché usan únicamente respuestas de ese `pulse_id`; `OPENAI_API_KEY` vive solo en secretos de Supabase.
 - Las dudas se tratan como datos no confiables para reducir prompt injection, y los conteos del mapa se derivan en servidor de referencias reales.
+- La Edge Function de artefactos valida además el rol docente, proyecta sólo agregados y mapas vigentes, elimina evidencia y textos individuales, usa `store:false` y rechaza salidas con correos, UUID, URLs o secretos.
+- Borradores, intervenciones y comparaciones nunca publican, moderan, califican ni cambian visibilidad. Aplicar un borrador conserva `questions_published` y sólo prepara el formulario local.
 
 El identificador usado para responder es un UUID aleatorio guardado en `localStorage`. Antes de guardar una respuesta, el servidor genera otro UUID seudónimo específico para ese pulso. La cuenta del portal no participa en este proceso y la comparación antes/después es estrictamente agregada. Borrar el almacenamiento o cambiar de navegador genera otro identificador local, por eso el servidor conserva además límites por red, pulso y capacidad total.
 
@@ -450,6 +479,13 @@ Una clase finalizada no se publica automáticamente. El profesor debe guardar un
 | El preview de Cloudflare no iniciaba porque una constante se exportaba como entrada RPC del worker | La ruta de configuración quedó privada al módulo; solo las funciones válidas permanecen como exports del worker |
 | El asesor marcaba las matrículas con RLS pero sin una política visible | Se añadió una política explícita que deniega todo acceso directo; las matrículas siguen disponibles únicamente mediante RPC estrechas |
 | La tabla privada de intentos de matrícula no tenía una clave primaria | Cada intento recibe ahora un identificador interno estable sin exponerlo al cliente |
+| Una finalización podía ocurrir entre las lecturas de caché y pendiente y reservar trabajo duplicado | Reserva y finalización de artefactos toman el mismo bloqueo transaccional por objetivo |
+| Un borrador podía parecer vigente mientras sus fuentes aún cargaban o cambiaban durante la generación | La aplicación falla cerrada hasta cargar todas las fuentes y compara su última modificación con un límite conservador guardado en servidor |
+| Un mapa nuevo podía conservar la etiqueta visual del concepto anterior al regenerar | La selección se reconcilia con el `source_analysis_id` realmente usado por el servidor |
+| Una intervención obsoleta todavía permitía abrir el siguiente pulso | La acción queda bloqueada hasta regenerar con el mapa vigente |
+| Consultar un historial global acotado podía omitir el mapa de un pulso antiguo | La función obtiene exactamente el último mapa completado de cada pulso |
+| Una clave ausente podía consumir cuota sin llamar a OpenAI | La configuración se valida antes de reservar una fila de trabajo pagado |
+| El historial remoto de migraciones no coincidía con todos los archivos locales antiguos | El despliegue aplica y verifica únicamente la migración nueva; no se usa `db push` a ciegas ni se repara historia sin auditarla |
 
 ### Catálogo operativo de errores del portal
 
@@ -473,6 +509,18 @@ Comprueba que `public.responses` esté en `supabase_realtime`, que el profesor c
 ### “El análisis con IA aún no está configurado”
 
 Añade `OPENAI_API_KEY` en **Supabase > Edge Functions > Secrets**. No la añadas a las variables públicas del sitio. No es necesario volver a compilar el frontend después de guardar el secreto.
+
+### El borrador o la intervención aparece desactualizado
+
+Llegó una señal, cambió un pulso, se completó un mapa o cambió el contexto después del límite temporal registrado por el artefacto. Es una protección conservadora: regenera antes de aplicar el borrador o abrir la siguiente medición. Si una generación anterior sigue pendiente, usa **Revisar estado**; después de diez minutos el servidor puede cerrarla de forma segura y permitir otro intento.
+
+### El copiloto informa un límite de IA
+
+Las reservas de mapas, borradores e intervenciones comparten cuotas. Espera hasta salir de la ventana horaria o diaria; no aumentes el límite desde el cliente. Caché válida se devuelve antes de cobrar cuota. Si el límite aparece sin llamadas reales, verifica la credencial y los logs: una configuración faltante se valida antes de reservar trabajo.
+
+### El copiloto rechaza modelo, esfuerzo o formato
+
+Confirma que `OPENAI_MODEL_ROUTINE=gpt-5.6-luna`, que el borrador use `medium` y la intervención `high`. El backend no cae automáticamente a modelos más caros. Una salida incompleta, un rechazo del proveedor, un timeout de 110 segundos o una estructura fuera del schema queda como error seguro; el navegador nunca recibe el cuerpo interno de OpenAI.
 
 ### OpenAI rechaza la credencial o aplica un límite temporal
 

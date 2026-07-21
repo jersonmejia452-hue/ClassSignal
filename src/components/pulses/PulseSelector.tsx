@@ -28,10 +28,10 @@ export function PulseSelector({
         Pulso en revisión
       </p>
 
-      <label className="mt-3 block shrink-0 sm:mt-0" htmlFor="pulse-selector">
+      <label className="mt-3 block w-full shrink-0 sm:mt-0 sm:w-auto" htmlFor="pulse-selector">
         <span className="sr-only">Seleccionar pulso</span>
         <select
-          className="form-input min-w-56 bg-white py-2.5 text-sm font-extrabold"
+          className="form-input w-full bg-white py-2.5 text-sm font-extrabold sm:min-w-56 sm:w-auto"
           id="pulse-selector"
           onChange={(event) => onChange(event.target.value)}
           value={value}

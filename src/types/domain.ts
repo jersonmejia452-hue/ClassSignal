@@ -265,3 +265,94 @@ export interface SessionAnalysis {
   created_at: string
   completed_at: string | null
 }
+
+export const sessionAiArtifactKinds = [
+  'publication_draft',
+  'micro_intervention',
+] as const
+export const sessionAiArtifactStatuses = ['pending', 'completed', 'failed'] as const
+export const sessionAiArtifactReasoningEfforts = ['low', 'medium', 'high', 'xhigh'] as const
+export const sessionAiArtifactPendingTimeoutMs = 10 * 60 * 1000
+
+export type SessionAiArtifactKind = (typeof sessionAiArtifactKinds)[number]
+export type SessionAiArtifactStatus = (typeof sessionAiArtifactStatuses)[number]
+export type SessionAiArtifactReasoningEffort = (typeof sessionAiArtifactReasoningEfforts)[number]
+
+export interface PublicationDraftReviewNote {
+  field: 'summary' | 'resources'
+  message: string
+}
+
+export interface PublicationDraftArtifactResult {
+  summary: string
+  resources_and_next_steps: string
+  review_notes: PublicationDraftReviewNote[]
+}
+
+export interface MicroInterventionStep {
+  instruction: string
+  duration_minutes: number
+}
+
+export interface MicroInterventionResult {
+  title: string
+  objective: string
+  duration_minutes: number
+  explanation: string
+  example: string
+  steps: MicroInterventionStep[]
+  check_question: string
+  expected_answer: string
+  misconception_to_watch: string
+  follow_up_action: string
+}
+
+interface SessionAiArtifactBase {
+  id: string
+  professor_id: string
+  session_id: string
+  status: SessionAiArtifactStatus
+  model: string
+  reasoning_effort: SessionAiArtifactReasoningEffort
+  prompt_version: number
+  source_fingerprint: string
+  source_captured_at: string
+  error_code: string | null
+  error_message: string | null
+  input_tokens: number | null
+  cached_input_tokens: number | null
+  output_tokens: number | null
+  reasoning_tokens: number | null
+  total_tokens: number | null
+  estimated_cost_usd: number | null
+  pricing_version: string | null
+  duration_ms: number | null
+  provider_request_id: string | null
+  provider_response_id: string | null
+  created_at: string
+  completed_at: string | null
+}
+
+export interface PublicationDraftArtifact extends SessionAiArtifactBase {
+  kind: 'publication_draft'
+  pulse_id: null
+  source_analysis_id: null
+  concept_index: null
+  result: PublicationDraftArtifactResult | null
+}
+
+export interface MicroInterventionArtifact extends SessionAiArtifactBase {
+  kind: 'micro_intervention'
+  pulse_id: string
+  source_analysis_id: string
+  concept_index: number
+  result: MicroInterventionResult | null
+}
+
+export type SessionAiArtifact = PublicationDraftArtifact | MicroInterventionArtifact
+
+export interface SessionAiArtifactInvocation {
+  artifact: SessionAiArtifact
+  cached: boolean
+  in_progress?: boolean
+}

@@ -1,10 +1,15 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useId, useReducer, useRef, useState, type FormEvent } from 'react'
 import { BookOpenCheck, Eye, EyeOff, FileText, MessageCircleQuestion, Trash2 } from 'lucide-react'
 
 import type { SessionPublication } from '../../types/domain'
 import { Alert } from '../ui/Alert'
 import { Button } from '../ui/Button'
 import { Field } from '../ui/Field'
+import { PublicationAiDraftPanel } from './PublicationAiDraftPanel'
+import {
+  createPublicationAiDraftEditorState,
+  publicationAiDraftEditorReducer,
+} from './publicationAiDraftState'
 
 type PublicationDraft = Pick<
   SessionPublication,
@@ -14,8 +19,12 @@ type PublicationDraft = Pick<
 interface SessionPublicationPanelProps {
   error?: string | null
   onDelete: () => Promise<unknown>
+  onRefreshSources?: () => Promise<unknown> | unknown
   onSave: (draft: PublicationDraft) => Promise<unknown>
   publication: SessionPublication | null
+  sessionId: string
+  sourcesReady?: boolean
+  sourceUpdatedAt?: string | null
 }
 
 const minimumSummaryLength = 10
@@ -25,8 +34,12 @@ const maximumResourcesLength = 2000
 export function SessionPublicationPanel({
   error = null,
   onDelete,
+  onRefreshSources,
   onSave,
   publication,
+  sessionId,
+  sourcesReady = true,
+  sourceUpdatedAt = null,
 }: SessionPublicationPanelProps) {
   const idPrefix = useId()
   const summaryId = `${idPrefix}-summary`
@@ -37,11 +50,22 @@ export function SessionPublicationPanel({
   const deleteTriggerId = `${idPrefix}-delete-trigger`
   const confirmationRef = useRef<HTMLDivElement>(null)
   const hasOpenedConfirmationRef = useRef(false)
-  const [summary, setSummary] = useState(publication?.summary ?? '')
-  const [resources, setResources] = useState(publication?.resources ?? '')
-  const [questionsPublished, setQuestionsPublished] = useState(
-    publication?.questions_published ?? false,
+  const [editor, dispatchEditor] = useReducer(
+    publicationAiDraftEditorReducer,
+    createPublicationAiDraftEditorState({
+      questionsPublished: publication?.questions_published ?? false,
+      resources: publication?.resources ?? '',
+      summary: publication?.summary ?? '',
+    }),
   )
+  const {
+    announcement,
+    dismissedArtifactId,
+    pendingApplication,
+    questionsPublished,
+    resources,
+    summary,
+  } = editor
   const [summaryError, setSummaryError] = useState<string | undefined>()
   const [actionError, setActionError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -49,9 +73,14 @@ export function SessionPublicationPanel({
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
 
   useEffect(() => {
-    setSummary(publication?.summary ?? '')
-    setResources(publication?.resources ?? '')
-    setQuestionsPublished(publication?.questions_published ?? false)
+    dispatchEditor({
+      type: 'hydrate_form',
+      form: {
+        questionsPublished: publication?.questions_published ?? false,
+        resources: publication?.resources ?? '',
+        summary: publication?.summary ?? '',
+      },
+    })
     setSummaryError(undefined)
     setActionError(null)
     setIsConfirmingDelete(false)
@@ -83,13 +112,19 @@ export function SessionPublicationPanel({
     || normalizedResources !== initialResources
     || questionsPublished !== (publication?.questions_published ?? false)
   const isBusy = isSaving || isDeleting
-  const isInteractionLocked = isBusy || isConfirmingDelete
+  const isConfirmingAiApply = Boolean(pendingApplication)
+  const isInteractionLocked = isBusy || isConfirmingDelete || isConfirmingAiApply
   const canRefreshPublishedQuestions = Boolean(publication && questionsPublished)
 
   const resetDraft = () => {
-    setSummary(publication?.summary ?? '')
-    setResources(publication?.resources ?? '')
-    setQuestionsPublished(publication?.questions_published ?? false)
+    dispatchEditor({
+      type: 'reset_form',
+      form: {
+        questionsPublished: publication?.questions_published ?? false,
+        resources: publication?.resources ?? '',
+        summary: publication?.summary ?? '',
+      },
+    })
     setSummaryError(undefined)
     setActionError(null)
   }
@@ -157,6 +192,31 @@ export function SessionPublicationPanel({
         </span>
       </div>
 
+      <PublicationAiDraftPanel
+        applyConfirmationOpen={isConfirmingAiApply}
+        disabled={isBusy || isConfirmingDelete}
+        dismissedArtifactId={dismissedArtifactId}
+        onCancelApply={() => dispatchEditor({ type: 'cancel_application' })}
+        onConfirmApply={() => {
+          setSummaryError(undefined)
+          setActionError(null)
+          dispatchEditor({ type: 'confirm_application' })
+        }}
+        onDiscard={(artifactId) => {
+          dispatchEditor({ type: 'discard_artifact', artifactId })
+        }}
+        onRequestApply={(draft) => {
+          setSummaryError(undefined)
+          setActionError(null)
+          dispatchEditor({ type: 'request_application', draft })
+        }}
+        onRefreshSources={onRefreshSources}
+        onRevealArtifact={() => dispatchEditor({ type: 'reveal_artifact' })}
+        sessionId={sessionId}
+        sourcesReady={sourcesReady}
+        sourceUpdatedAt={sourceUpdatedAt}
+      />
+
       <form className="space-y-6 p-5 sm:p-6" noValidate onSubmit={handleSubmit}>
         <div>
           <p className="text-sm leading-6 text-slate-600">
@@ -167,6 +227,7 @@ export function SessionPublicationPanel({
         {(error || actionError) && (
           <Alert tone="error">{error || actionError}</Alert>
         )}
+        {announcement && <Alert tone="success">{announcement}</Alert>}
 
         <Field
           error={summaryError}
@@ -182,7 +243,7 @@ export function SessionPublicationPanel({
             id={summaryId}
             maxLength={maximumSummaryLength}
             onChange={(event) => {
-              setSummary(event.target.value)
+              dispatchEditor({ type: 'edit_summary', value: event.target.value })
               if (summaryError) setSummaryError(undefined)
             }}
             placeholder="Ej. Repasamos la regla de la cadena y resolvimos ejercicios con funciones compuestas..."
@@ -205,7 +266,10 @@ export function SessionPublicationPanel({
             disabled={isInteractionLocked}
             id={resourcesId}
             maxLength={maximumResourcesLength}
-            onChange={(event) => setResources(event.target.value)}
+            onChange={(event) => dispatchEditor({
+              type: 'edit_resources',
+              value: event.target.value,
+            })}
             placeholder={'Guía de ejercicios: https://...\nLeer las páginas 42–48'}
             value={resources}
           />
@@ -230,7 +294,7 @@ export function SessionPublicationPanel({
             aria-checked={questionsPublished}
             className="mt-4 w-full shrink-0 sm:mt-0 sm:w-auto sm:min-w-36"
             disabled={isInteractionLocked}
-            onClick={() => setQuestionsPublished((current) => !current)}
+            onClick={() => dispatchEditor({ type: 'toggle_questions' })}
             role="switch"
             variant={questionsPublished ? 'secondary' : 'primary'}
           >

@@ -39,6 +39,10 @@ interface ConfusionMapPanelProps {
   isAnalyzing: boolean
   error: string | null
   onAnalyze: () => Promise<void>
+  onPrepareIntervention?: (conceptIndex: number) => unknown | Promise<unknown>
+  preparingConceptIndex?: number | null
+  selectedConceptIndex?: number | null
+  interventionDisabled?: boolean
 }
 
 const levelContent: Record<ConfusionLevel, { label: string; className: string }> = {
@@ -82,6 +86,10 @@ export function ConfusionMapPanel({
   isAnalyzing,
   error,
   onAnalyze,
+  onPrepareIntervention,
+  preparingConceptIndex = null,
+  selectedConceptIndex = null,
+  interventionDisabled: interventionExternallyDisabled = false,
 }: ConfusionMapPanelProps) {
   const map = analysis?.result ?? null
   const isPending = latestRun?.status === 'pending'
@@ -223,10 +231,23 @@ export function ConfusionMapPanel({
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm leading-6 text-emerald-950">
                   No se detectó un foco de confusión suficientemente consistente. Conviene consolidar el tema y mantener abierto el canal de dudas.
                 </div>
-              ) : map.concepts.map((concept) => {
+              ) : map.concepts.map((concept, conceptIndex) => {
                 const severity = severityContent[concept.severity]
+                const isPreparingThisConcept = preparingConceptIndex === conceptIndex
+                const interventionDisabled = isOutdated
+                  || isBusy
+                  || isLoading
+                  || interventionExternallyDisabled
                 return (
-                  <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" key={`${concept.concept}-${concept.explanation}`}>
+                  <article
+                    className={cn(
+                      'rounded-2xl border bg-white p-5 shadow-sm',
+                      selectedConceptIndex === conceptIndex
+                        ? 'border-blue-300 ring-2 ring-blue-100'
+                        : 'border-slate-200',
+                    )}
+                    key={`${concept.concept}-${concept.explanation}`}
+                  >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <span className={cn('inline-flex min-h-7 items-center rounded-full px-2.5 text-xs font-extrabold', severity.className)}>
@@ -251,6 +272,21 @@ export function ConfusionMapPanel({
                           </li>
                         ))}
                       </ul>
+                    )}
+                    {onPrepareIntervention && (
+                      <Button
+                        aria-label={`Preparar intervención para ${concept.concept}`}
+                        className="mt-5 w-full sm:w-auto"
+                        disabled={interventionDisabled}
+                        isLoading={isPreparingThisConcept}
+                        onClick={() => void onPrepareIntervention(conceptIndex)}
+                        variant="secondary"
+                      >
+                        {!isPreparingThisConcept && (
+                          <Sparkles className="size-4" aria-hidden="true" />
+                        )}
+                        {isPreparingThisConcept ? 'Preparando intervención' : 'Preparar intervención'}
+                      </Button>
                     )}
                   </article>
                 )
