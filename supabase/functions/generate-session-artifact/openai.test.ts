@@ -97,7 +97,10 @@ function completedResponse(
     ],
     usage: {
       input_tokens: 1_000,
-      input_tokens_details: { cached_tokens: 200 },
+      input_tokens_details: {
+        cached_tokens: 200,
+        cache_write_tokens: 100,
+      },
       output_tokens: 500,
       output_tokens_details: { reasoning_tokens: 300 },
       total_tokens: 1_500,
@@ -227,10 +230,11 @@ describe("buildArtifactTelemetry", () => {
     })).toEqual({
       input_tokens: 1_000,
       cached_input_tokens: 200,
+      cache_write_input_tokens: 100,
       output_tokens: 500,
       reasoning_tokens: 300,
       total_tokens: 1_500,
-      estimated_cost_usd: 0.00382,
+      estimated_cost_usd: 0.003845,
       pricing_version: LUNA_PRICING_VERSION,
       duration_ms: 44,
       provider_request_id: "req_telemetry",
@@ -251,6 +255,7 @@ describe("buildArtifactTelemetry", () => {
     })).toEqual({
       input_tokens: null,
       cached_input_tokens: null,
+      cache_write_input_tokens: null,
       output_tokens: null,
       reasoning_tokens: null,
       total_tokens: null,
@@ -277,10 +282,11 @@ describe("requestArtifact", () => {
       telemetry: {
         input_tokens: 1_000,
         cached_input_tokens: 200,
+        cache_write_input_tokens: 100,
         output_tokens: 500,
         reasoning_tokens: 300,
         total_tokens: 1_500,
-        estimated_cost_usd: 0.00382,
+        estimated_cost_usd: 0.003845,
         pricing_version: LUNA_PRICING_VERSION,
         provider_request_id: "req_safe_123",
         provider_response_id: "resp_safe_123",

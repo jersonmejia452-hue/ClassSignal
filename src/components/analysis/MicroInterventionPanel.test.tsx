@@ -55,6 +55,14 @@ const artifact: MicroInterventionArtifact = {
   completed_at: '2026-07-21T15:00:01.000Z',
 }
 
+const nextArtifact: MicroInterventionArtifact = {
+  ...artifact,
+  id: '00000000-0000-4000-8000-000000000016',
+  source_fingerprint: 'b'.repeat(64),
+  created_at: '2026-07-21T15:05:00.000Z',
+  completed_at: '2026-07-21T15:05:01.000Z',
+}
+
 beforeEach(() => {
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
@@ -102,5 +110,76 @@ describe('MicroInterventionPanel', () => {
     expect(copied).toContain(artifact.result!.check_question)
     expect(screen.getByRole('button', { name: 'Abrir nuevo pulso' })).toBeDisabled()
     expect(screen.getByText(/máximo de seis pulsos/i)).toBeInTheDocument()
+  })
+
+  it('reinicia copia y confirmación cuando cambia el artefacto', async () => {
+    const user = userEvent.setup()
+    const onOpenNextPulse = vi.fn().mockResolvedValue(true)
+    const renderPanel = (currentArtifact: MicroInterventionArtifact) => (
+      <MicroInterventionPanel
+        artifact={currentArtifact}
+        conceptLabel="Equivalencia"
+        error={null}
+        hasTimedOutPending={false}
+        history={[currentArtifact]}
+        inProgress={false}
+        isGenerating={false}
+        isLoading={false}
+        isOpeningPulse={false}
+        isOutdated={false}
+        lastInvocationWasCached={false}
+        onOpenNextPulse={onOpenNextPulse}
+        onRefresh={vi.fn()}
+        onRegenerate={vi.fn()}
+        openDisabledReason={null}
+        openPulseError={null}
+        showOpenPulseAction
+      />
+    )
+    const view = render(renderPanel(artifact))
+
+    await user.click(screen.getByRole('button', { name: 'Copiar intervención' }))
+    await waitFor(() => expect(screen.getByRole('button', {
+      name: 'Intervención copiada',
+    })).toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: 'Abrir nuevo pulso' }))
+    expect(screen.getByRole('group', { name: 'Confirmar nuevo pulso' })).toBeInTheDocument()
+
+    view.rerender(renderPanel(nextArtifact))
+
+    expect(screen.getByRole('button', { name: 'Copiar intervención' })).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Confirmar nuevo pulso' })).not.toBeInTheDocument()
+    expect(onOpenNextPulse).not.toHaveBeenCalled()
+  })
+
+  it('enfoca una confirmación nueva tras cambiar el artefacto con el diálogo cerrado', async () => {
+    const user = userEvent.setup()
+    const renderPanel = (currentArtifact: MicroInterventionArtifact) => (
+      <MicroInterventionPanel
+        artifact={currentArtifact}
+        conceptLabel="Equivalencia"
+        error={null}
+        hasTimedOutPending={false}
+        history={[currentArtifact]}
+        inProgress={false}
+        isGenerating={false}
+        isLoading={false}
+        isOpeningPulse={false}
+        isOutdated={false}
+        lastInvocationWasCached={false}
+        onOpenNextPulse={vi.fn().mockResolvedValue(true)}
+        onRefresh={vi.fn()}
+        onRegenerate={vi.fn()}
+        openDisabledReason={null}
+        openPulseError={null}
+        showOpenPulseAction
+      />
+    )
+    const view = render(renderPanel(artifact))
+
+    view.rerender(renderPanel(nextArtifact))
+    await user.click(screen.getByRole('button', { name: 'Abrir nuevo pulso' }))
+
+    expect(screen.getByRole('group', { name: 'Confirmar nuevo pulso' })).toHaveFocus()
   })
 })

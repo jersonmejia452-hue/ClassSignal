@@ -114,6 +114,7 @@ export function buildArtifactTelemetry(
   return {
     input_tokens: usage?.inputTokens ?? null,
     cached_input_tokens: usage?.cachedInputTokens ?? null,
+    cache_write_input_tokens: usage?.cacheWriteInputTokens ?? null,
     output_tokens: usage?.outputTokens ?? null,
     reasoning_tokens: usage?.reasoningTokens ?? null,
     total_tokens: usage?.totalTokens ?? null,

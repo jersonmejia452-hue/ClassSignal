@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   artifactJsonSchema,
@@ -16,6 +16,7 @@ import {
   parseArtifactOutput,
   parseArtifactRequestBody,
   projectConfusionMap,
+  readArtifactRequestBody,
   sanitizeUntrustedText,
 } from "./artifact-core.ts";
 import { PublicFunctionError } from "./errors.ts";
@@ -263,6 +264,66 @@ describe("parseArtifactRequestBody", () => {
       "artifact_request_too_large",
       413,
     );
+  });
+});
+
+describe("readArtifactRequestBody", () => {
+  function requestFromStream(stream: ReadableStream<Uint8Array>) {
+    return new Request("https://classsignal.test/artifact", {
+      method: "POST",
+      body: stream,
+      duplex: "half",
+    } as RequestInit & { duplex: "half" });
+  }
+
+  it("acepta exactamente 4 KB UTF-8 sin depender de Content-Length", async () => {
+    const expected = "á".repeat(MAX_ARTIFACT_BODY_BYTES / 2);
+    const bytes = new TextEncoder().encode(expected);
+    const request = requestFromStream(new ReadableStream({
+      start(controller) {
+        controller.enqueue(bytes.subarray(0, 1_500));
+        controller.enqueue(bytes.subarray(1_500));
+        controller.close();
+      },
+    }));
+
+    expect(request.headers.has("content-length")).toBe(false);
+    await expect(readArtifactRequestBody(request)).resolves.toBe(expected);
+  });
+
+  it("cancela una lectura que supera 4 KB aunque no haya Content-Length", async () => {
+    let cancelled = false;
+    const request = requestFromStream(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array(MAX_ARTIFACT_BODY_BYTES));
+        controller.enqueue(new Uint8Array(1));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    }));
+
+    await expect(readArtifactRequestBody(request)).rejects.toMatchObject({
+      code: "artifact_request_too_large",
+      status: 413,
+    });
+    expect(cancelled).toBe(true);
+  });
+
+  it("rechaza un Content-Length excesivo antes de abrir el stream", async () => {
+    const getReader = vi.fn();
+    const request = {
+      headers: new Headers({
+        "content-length": String(MAX_ARTIFACT_BODY_BYTES + 1),
+      }),
+      body: { getReader },
+    } as unknown as Request;
+
+    await expect(readArtifactRequestBody(request)).rejects.toMatchObject({
+      code: "artifact_request_too_large",
+      status: 413,
+    });
+    expect(getReader).not.toHaveBeenCalled();
   });
 });
 

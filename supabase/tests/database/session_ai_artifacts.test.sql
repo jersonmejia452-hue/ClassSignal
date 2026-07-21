@@ -184,14 +184,22 @@ select ok(
 
 select ok(
   has_table_privilege('service_role', 'public.session_ai_artifacts', 'SELECT')
-  and has_table_privilege('service_role', 'public.session_ai_artifacts', 'INSERT')
-  and has_table_privilege('service_role', 'public.session_ai_artifacts', 'UPDATE')
+  and not has_table_privilege(
+    'service_role',
+    'public.session_ai_artifacts',
+    'INSERT'
+  )
+  and not has_table_privilege(
+    'service_role',
+    'public.session_ai_artifacts',
+    'UPDATE'
+  )
   and not has_table_privilege(
     'service_role',
     'public.session_ai_artifacts',
     'DELETE'
   ),
-  'service_role can create and close artifacts but cannot delete history'
+  'service_role reads artifacts but can mutate them only through RPCs'
 );
 
 select ok(

@@ -66,6 +66,70 @@ interface InterventionSelection {
   sourceAnalysisId: string
 }
 
+interface NextPulseAuthorization {
+  activeResponseCount: number
+  artifactWorkInProgress: boolean
+  hasActivePulse: boolean
+  hasCurrentPulseIntervention: boolean
+  interventionIsOutdated: boolean
+  interventionSourcesReady: boolean
+  isLoadingPulseSources: boolean
+  isOpeningPulse: boolean
+  isRealtimeConnected: boolean
+  pulseCount: number
+  pulseSourcesHaveErrors: boolean
+  sessionIsActive: boolean
+}
+
+export function canOpenNextPulse({
+  activeResponseCount,
+  artifactWorkInProgress,
+  hasActivePulse,
+  hasCurrentPulseIntervention,
+  interventionIsOutdated,
+  interventionSourcesReady,
+  isLoadingPulseSources,
+  isOpeningPulse,
+  isRealtimeConnected,
+  pulseCount,
+  pulseSourcesHaveErrors,
+  sessionIsActive,
+}: NextPulseAuthorization) {
+  if (
+    !sessionIsActive
+    || isLoadingPulseSources
+    || pulseSourcesHaveErrors
+    || !isRealtimeConnected
+    || isOpeningPulse
+    || pulseCount >= maximumSessionPulseCount
+    || (hasActivePulse && activeResponseCount === 0)
+    || artifactWorkInProgress
+  ) return false
+
+  return !hasCurrentPulseIntervention
+    || (interventionSourcesReady && !interventionIsOutdated)
+}
+
+export function isPulseInInterventionCycle(
+  sourcePulseOrdinal: number,
+  candidatePulseOrdinal: number,
+) {
+  return candidatePulseOrdinal === sourcePulseOrdinal
+    || candidatePulseOrdinal === sourcePulseOrdinal + 1
+}
+
+export function wasInterventionReadyBeforePulse(
+  interventionCompletedAt: string | null,
+  pulseStartedAt: string,
+) {
+  if (!interventionCompletedAt) return false
+  const completedAt = Date.parse(interventionCompletedAt)
+  const startedAt = Date.parse(pulseStartedAt)
+  return Number.isFinite(completedAt)
+    && Number.isFinite(startedAt)
+    && completedAt <= startedAt
+}
+
 export function SessionDetailPage() {
   const { id } = useParams<{ id: string }>()
   const location = useLocation()
@@ -90,6 +154,19 @@ export function SessionDetailPage() {
   const [areSessionAnalysisSourcesLoaded, setAreSessionAnalysisSourcesLoaded] = useState(false)
   const currentSessionIdRef = useRef<string | null>(null)
   const selectedPulseIdRef = useRef<string | null>(null)
+  const activePulseIdRef = useRef<string | null>(null)
+  const interventionSelectionRef = useRef<InterventionSelection | null>(null)
+  const interventionRequestSequenceRef = useRef(0)
+
+  const replaceInterventionSelection = useCallback((next: InterventionSelection | null) => {
+    interventionSelectionRef.current = next
+    setInterventionSelection(next)
+  }, [])
+
+  const clearInterventionSelection = useCallback(() => {
+    interventionRequestSequenceRef.current += 1
+    replaceInterventionSelection(null)
+  }, [replaceInterventionSelection])
 
   const {
     responses,
@@ -181,6 +258,10 @@ export function SessionDetailPage() {
   }, [activePulse?.id])
 
   useEffect(() => {
+    activePulseIdRef.current = activePulse?.id ?? null
+  }, [activePulse?.id])
+
+  useEffect(() => {
     selectedPulseIdRef.current = selectedPulseId
   }, [selectedPulseId])
 
@@ -215,6 +296,7 @@ export function SessionDetailPage() {
       : [],
     [activePulse, responses],
   )
+  const latestPulse = pulses[pulses.length - 1] ?? null
   const previousPulse = useMemo(() => {
     if (!selectedPulse) return null
     return [...pulses]
@@ -255,6 +337,14 @@ export function SessionDetailPage() {
         !== Date.parse(selectedResponses[0]?.created_at ?? '')
     ),
   )
+  const selectedInterventionSourcePulse = interventionSelection
+    ? pulses.find((pulse) => pulse.id === interventionSelection.pulseId) ?? null
+    : null
+  const selectedInterventionNextPulse = selectedInterventionSourcePulse
+    ? pulses.find(
+        (pulse) => pulse.ordinal === selectedInterventionSourcePulse.ordinal + 1,
+      ) ?? null
+    : null
   const selectedInterventionRuns = useMemo(() => {
     if (!interventionSelection) return []
     return microArtifacts.filter((artifact) => (
@@ -268,16 +358,16 @@ export function SessionDetailPage() {
   }, [interventionSelection, microArtifacts])
   const latestSelectedInterventionRun = selectedInterventionRuns[0] ?? null
   const selectedInterventionArtifact = selectedInterventionRuns.find(
-    (artifact) => artifact.status === 'completed' && artifact.result,
+    (artifact) => artifact.status === 'completed'
+      && artifact.result
+      && (
+        !selectedInterventionNextPulse
+        || wasInterventionReadyBeforePulse(
+          artifact.completed_at,
+          selectedInterventionNextPulse.started_at,
+        )
+      ),
   ) ?? null
-  const selectedInterventionSourcePulse = interventionSelection
-    ? pulses.find((pulse) => pulse.id === interventionSelection.pulseId) ?? null
-    : null
-  const selectedInterventionNextPulse = selectedInterventionSourcePulse
-    ? pulses.find(
-        (pulse) => pulse.ordinal === selectedInterventionSourcePulse.ordinal + 1,
-      ) ?? null
-    : null
   const selectedInterventionSourceResponses = selectedInterventionSourcePulse
     ? responses.filter(
         (response) => response.pulse_id === selectedInterventionSourcePulse.id,
@@ -339,6 +429,37 @@ export function SessionDetailPage() {
     : []
 
   useEffect(() => {
+    if (!interventionSelection) return
+    if (!selectedInterventionSourcePulse) {
+      clearInterventionSelection()
+      return
+    }
+
+    const latestPulseOrdinal = pulses.reduce(
+      (latest, pulse) => Math.max(latest, pulse.ordinal),
+      selectedInterventionSourcePulse.ordinal,
+    )
+    const hasAdvancedBeyondCycle = !isPulseInInterventionCycle(
+      selectedInterventionSourcePulse.ordinal,
+      latestPulseOrdinal,
+    )
+    const nextPulseStartedWithoutIntervention = Boolean(
+      selectedInterventionNextPulse && !selectedInterventionArtifact,
+    )
+
+    if (hasAdvancedBeyondCycle || nextPulseStartedWithoutIntervention) {
+      clearInterventionSelection()
+    }
+  }, [
+    clearInterventionSelection,
+    interventionSelection,
+    pulses,
+    selectedInterventionArtifact,
+    selectedInterventionNextPulse,
+    selectedInterventionSourcePulse,
+  ])
+
+  useEffect(() => {
     let isMounted = true
     currentSessionIdRef.current = id ?? null
 
@@ -357,7 +478,7 @@ export function SessionDetailPage() {
       setIsPublicationLoaded(false)
       setIsRetryingPublication(false)
       setWorkspacePanel('live')
-      setInterventionSelection(null)
+      clearInterventionSelection()
       setLatestSessionAnalysisAt(null)
       setAreSessionAnalysisSourcesLoaded(false)
       setToggleError(null)
@@ -405,7 +526,7 @@ export function SessionDetailPage() {
         currentSessionIdRef.current = null
       }
     }
-  }, [id])
+  }, [clearInterventionSelection, id])
 
   useEffect(() => {
     const completedAt = latestCompletedAnalysis?.completed_at
@@ -442,7 +563,7 @@ export function SessionDetailPage() {
           || targetPulse.ordinal === sourcePulse.ordinal + 1
         ),
       )
-      if (!remainsInCycle) setInterventionSelection(null)
+      if (!remainsInCycle) clearInterventionSelection()
     }
     setSelectedPulseId(pulseId)
   }
@@ -450,6 +571,7 @@ export function SessionDetailPage() {
   const prepareIntervention = async (conceptIndex: number) => {
     if (
       !selectedPulse
+      || !selectedPulse.is_active
       || !latestCompletedAnalysis?.result
       || selectedAnalysisIsOutdated
       || !responsesReady
@@ -461,19 +583,29 @@ export function SessionDetailPage() {
     const concept = latestCompletedAnalysis.result.concepts[conceptIndex]
     if (!concept) return
 
-    setInterventionSelection({
+    const requestSequence = ++interventionRequestSequenceRef.current
+    const nextSelection: InterventionSelection = {
       conceptIndex,
       conceptLabel: concept.concept,
       previousArtifactId: null,
       pulseId: selectedPulse.id,
       sourceAnalysisId: latestCompletedAnalysis.id,
-    })
+    }
+    replaceInterventionSelection(nextSelection)
     const invocation = await generateArtifact({
       pulseId: selectedPulse.id,
       conceptIndex,
     })
     if (invocation?.artifact.kind !== 'micro_intervention') return
-    setInterventionSelection({
+    const currentSelection = interventionSelectionRef.current
+    if (
+      interventionRequestSequenceRef.current !== requestSequence
+      || activePulseIdRef.current !== nextSelection.pulseId
+      || currentSelection?.pulseId !== nextSelection.pulseId
+      || currentSelection.sourceAnalysisId !== nextSelection.sourceAnalysisId
+      || currentSelection.conceptIndex !== nextSelection.conceptIndex
+    ) return
+    replaceInterventionSelection({
       conceptIndex: invocation.artifact.concept_index,
       conceptLabel: concept.concept,
       previousArtifactId: null,
@@ -483,49 +615,111 @@ export function SessionDetailPage() {
   }
 
   const regenerateIntervention = async () => {
-    if (!interventionSelection || isGeneratingArtifact || artifactInProgress) return
+    const selectionAtRequest = interventionSelectionRef.current
+    if (
+      !selectionAtRequest
+      || activePulseIdRef.current !== selectionAtRequest.pulseId
+      || isGeneratingArtifact
+      || artifactInProgress
+    ) return
+    const requestSequence = ++interventionRequestSequenceRef.current
     const previousArtifactId = selectedInterventionArtifact?.id ?? null
     const invocation = await generateArtifact({
-      pulseId: interventionSelection.pulseId,
-      conceptIndex: interventionSelection.conceptIndex,
+      pulseId: selectionAtRequest.pulseId,
+      conceptIndex: selectionAtRequest.conceptIndex,
       regenerate: true,
     })
     if (invocation?.artifact.kind !== 'micro_intervention') return
+    const currentSelection = interventionSelectionRef.current
+    if (
+      interventionRequestSequenceRef.current !== requestSequence
+      || activePulseIdRef.current !== selectionAtRequest.pulseId
+      || currentSelection?.pulseId !== selectionAtRequest.pulseId
+      || currentSelection.sourceAnalysisId !== selectionAtRequest.sourceAnalysisId
+      || currentSelection.conceptIndex !== selectionAtRequest.conceptIndex
+    ) return
     const generatedArtifact = invocation.artifact
     const currentConceptLabel = selectedPulse?.id === generatedArtifact.pulse_id
       && latestCompletedAnalysis?.id === generatedArtifact.source_analysis_id
       ? latestCompletedAnalysis.result?.concepts[generatedArtifact.concept_index]?.concept
       : null
-    setInterventionSelection((current) => current ? {
+    replaceInterventionSelection({
       conceptIndex: generatedArtifact.concept_index,
-      conceptLabel: currentConceptLabel ?? current.conceptLabel,
+      conceptLabel: currentConceptLabel ?? currentSelection.conceptLabel,
       previousArtifactId,
       pulseId: generatedArtifact.pulse_id,
       sourceAnalysisId: generatedArtifact.source_analysis_id,
-    } : null)
+    })
   }
 
-  const openPulseFromIntervention = async () => {
-    if (
-      !session?.is_active
-      || !selectedInterventionSourcePulse?.is_active
-      || selectedInterventionNextPulse
-      || isLoadingPulses
-      || isLoadingResponses
-      || isLoadingAnalyses
-      || !responsesReady
-      || !isRealtimeConnected
-      || Boolean(pulsesError)
-      || Boolean(analysisError)
-      || isOpeningPulse
-      || isGeneratingArtifact
-      || artifactInProgress
-      || pulses.length >= maximumSessionPulseCount
-      || selectedInterventionSourceResponses.length === 0
-      || selectedInterventionIsOutdated
-    ) return false
+  const hasCurrentPulseIntervention = Boolean(
+    interventionSelection && interventionSelection.pulseId === activePulse?.id,
+  )
+  const artifactWorkInProgress = isGeneratingArtifact || artifactInProgress
+  const pulseOpeningIsAuthorized = canOpenNextPulse({
+    activeResponseCount: activeResponses.length,
+    artifactWorkInProgress,
+    hasActivePulse: Boolean(activePulse),
+    hasCurrentPulseIntervention,
+    interventionIsOutdated: selectedInterventionIsOutdated,
+    interventionSourcesReady: !isLoadingAnalyses
+      && !isLoadingArtifacts
+      && !analysisError
+      && !artifactError,
+    isLoadingPulseSources: isLoadingPulses || isLoadingResponses,
+    isOpeningPulse,
+    isRealtimeConnected,
+    pulseCount: pulses.length,
+    pulseSourcesHaveErrors: Boolean(pulsesError || responsesError),
+    sessionIsActive: Boolean(session?.is_active),
+  })
+  const reactivationOpeningIsAuthorized = canOpenNextPulse({
+    activeResponseCount: 0,
+    artifactWorkInProgress,
+    hasActivePulse: false,
+    hasCurrentPulseIntervention: Boolean(
+      interventionSelection && interventionSelection.pulseId === latestPulse?.id,
+    ),
+    interventionIsOutdated: selectedInterventionIsOutdated,
+    interventionSourcesReady: !isLoadingAnalyses
+      && !isLoadingArtifacts
+      && !analysisError
+      && !artifactError,
+    isLoadingPulseSources: isLoadingPulses || isLoadingResponses,
+    isOpeningPulse: isOpeningPulse || isToggling,
+    isRealtimeConnected,
+    pulseCount: pulses.length,
+    pulseSourcesHaveErrors: Boolean(pulsesError || responsesError),
+    sessionIsActive: true,
+  })
+  const isLivePulseOpeningBlocked = isLoadingPulses
+    || isLoadingResponses
+    || Boolean(pulsesError || responsesError)
+    || !isRealtimeConnected
+    || artifactWorkInProgress
+    || (
+      hasCurrentPulseIntervention
+      && (
+        isLoadingAnalyses
+        || isLoadingArtifacts
+        || Boolean(analysisError || artifactError)
+        || selectedInterventionIsOutdated
+      )
+    )
 
-    return Boolean(await openNextPulse())
+  const openNextPulseSafely = async () => {
+    if (!pulseOpeningIsAuthorized) return false
+
+    const sourceOrdinal = selectedInterventionSourcePulse?.ordinal ?? null
+    const openedPulse = await openNextPulse()
+    if (!openedPulse) return false
+
+    if (
+      sourceOrdinal !== null
+      && !isPulseInInterventionCycle(sourceOrdinal, openedPulse.ordinal)
+    ) clearInterventionSelection()
+
+    return true
   }
 
   const savePublication = async (values: SessionPublicationDraft) => {
@@ -591,7 +785,7 @@ export function SessionDetailPage() {
 
   const toggleSession = async () => {
     if (!session) return
-    if (!session.is_active && pulses.length >= maximumSessionPulseCount) return
+    if (!session.is_active && !reactivationOpeningIsAuthorized) return
     const targetSessionId = session.id
     setIsToggling(true)
     setToggleError(null)
@@ -725,11 +919,11 @@ export function SessionDetailPage() {
       ? hasRealtimeError
         ? 'Restablece la conexión en vivo antes de abrir el siguiente pulso.'
         : 'Espera a que termine de conectar el seguimiento en vivo.'
-    : !responsesReady || pulsesError || analysisError
+    : !responsesReady || pulsesError || analysisError || artifactError
       ? 'No pudimos verificar todas las fuentes. Actualiza el panel antes de abrir otro pulso.'
     : !selectedInterventionSourcePulse?.is_active
       ? 'La intervención debe pertenecer al pulso activo para abrir la siguiente medición.'
-      : isLoadingPulses || isLoadingResponses || isLoadingAnalyses
+      : isLoadingPulses || isLoadingResponses || isLoadingAnalyses || isLoadingArtifacts
         ? 'Espera a que terminen de cargar los pulsos y las respuestas.'
         : selectedInterventionSourceResponses.length === 0
           ? 'Recibe al menos una señal antes de abrir el siguiente pulso.'
@@ -792,7 +986,7 @@ export function SessionDetailPage() {
           className="shrink-0"
           disabled={isTogglingQuestionWall
             || isOpeningPulse
-            || (!session.is_active && (isLoadingPulses || hasReachedPulseLimit))}
+            || (!session.is_active && !reactivationOpeningIsAuthorized)}
           isLoading={isToggling}
           onClick={toggleSession}
           variant={session.is_active ? 'danger' : 'secondary'}
@@ -854,10 +1048,10 @@ export function SessionDetailPage() {
             activePulseStartedAt={activePulse?.started_at}
             activeResponseCount={activeResponses.length}
             error={pulsesError}
-            isLoading={isLoadingPulses || isLoadingResponses}
+            isLoading={isLivePulseOpeningBlocked}
             isOpening={isOpeningPulse}
             isSessionActive={session.is_active}
-            onOpenNext={openNextPulse}
+            onOpenNext={openNextPulseSafely}
             onRetry={refreshPulses}
             pulseCount={pulses.length}
           />
@@ -1004,6 +1198,7 @@ export function SessionDetailPage() {
                 analysis={latestCompletedAnalysis}
                 error={analysisError}
                 interventionDisabled={!responsesReady
+                  || !selectedPulse.is_active
                   || isLoadingArtifacts
                   || isGeneratingArtifact
                   || artifactInProgress}
@@ -1036,7 +1231,7 @@ export function SessionDetailPage() {
                 isOpeningPulse={isOpeningPulse}
                 isOutdated={selectedInterventionIsOutdated}
                 lastInvocationWasCached={lastInvocationWasCached}
-                onOpenNextPulse={openPulseFromIntervention}
+                onOpenNextPulse={openNextPulseSafely}
                 onRefresh={refreshArtifacts}
                 onRegenerate={regenerateIntervention}
                 openDisabledReason={interventionOpenDisabledReason}

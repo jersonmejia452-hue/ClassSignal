@@ -41,6 +41,7 @@ export function useSessionAiArtifacts(
   const [error, setError] = useState<string | null>(null)
   const [lastInvocationWasCached, setLastInvocationWasCached] = useState(false)
   const [invocationInProgress, setInvocationInProgress] = useState(false)
+  const [timedOutPendingArtifactId, setTimedOutPendingArtifactId] = useState<string | null>(null)
   const requestKey = artifactKey(sessionId, kind)
   const activeRequestKey = useRef<string | undefined>(requestKey)
   const refreshSequence = useRef(0)
@@ -59,6 +60,13 @@ export function useSessionAiArtifacts(
       ) return undefined
 
       setArtifacts(currentArtifacts)
+      setTimedOutPendingArtifactId((current) => (
+        currentArtifacts.some((artifact) => (
+          artifact.id === current && artifact.status === 'pending'
+        ))
+          ? current
+          : null
+      ))
       const pendingId = erroredPendingArtifactId.current
       const pendingRun = pendingId
         ? currentArtifacts.find((artifact) => artifact.id === pendingId)
@@ -69,6 +77,10 @@ export function useSessionAiArtifacts(
       }
       if (!currentArtifacts.some((artifact) => artifact.status === 'pending')) {
         setInvocationInProgress(false)
+      }
+      if (!silent) {
+        erroredPendingArtifactId.current = null
+        setError(null)
       }
       return currentArtifacts
     } catch (refreshError) {
@@ -100,6 +112,7 @@ export function useSessionAiArtifacts(
       setError(null)
       setLastInvocationWasCached(false)
       setInvocationInProgress(false)
+      setTimedOutPendingArtifactId(null)
       erroredPendingArtifactId.current = null
       return undefined
     }
@@ -112,6 +125,7 @@ export function useSessionAiArtifacts(
     setError(null)
     setLastInvocationWasCached(false)
     setInvocationInProgress(false)
+    setTimedOutPendingArtifactId(null)
     erroredPendingArtifactId.current = null
     void refreshArtifacts()
 
@@ -125,7 +139,10 @@ export function useSessionAiArtifacts(
   const pendingExpiresAt = newestPending
     ? Date.parse(newestPending.created_at) + sessionAiArtifactPendingTimeoutMs
     : null
-  const hasTimedOutPending = pendingExpiresAt !== null && pendingExpiresAt <= Date.now()
+  const hasTimedOutPending = Boolean(newestPending && (
+    timedOutPendingArtifactId === newestPending.id
+    || (pendingExpiresAt !== null && pendingExpiresAt <= Date.now())
+  ))
   const hasLivePending = Boolean(newestPending && !hasTimedOutPending)
 
   useEffect(() => {
@@ -136,6 +153,11 @@ export function useSessionAiArtifacts(
     }, 4_000)
     const timeout = window.setTimeout(() => {
       window.clearInterval(interval)
+      setTimedOutPendingArtifactId(newestPending.id)
+      if (erroredPendingArtifactId.current === newestPending.id) {
+        erroredPendingArtifactId.current = null
+        setError(null)
+      }
       void refreshArtifacts(true)
     }, Math.max(0, pendingExpiresAt - Date.now()))
 

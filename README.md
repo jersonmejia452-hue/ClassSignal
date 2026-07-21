@@ -1,10 +1,94 @@
-# ClassSignal
+<p align="center">
+  <img src="./public/brand/classsignal-hackathon-logo.png" alt="ClassSignal logo" width="220" />
+</p>
+
+<h1 align="center">ClassSignal</h1>
+
+<p align="center"><strong>Every signal shapes the lesson.</strong></p>
+
+<p align="center">
+  <a href="https://aula-clara-build-week.jerssonmejia779.chatgpt.site/unirse">Live app</a>
+  ·
+  <a href="https://aula-clara-build-week.jerssonmejia779.chatgpt.site/demo">Zero-cost demo</a>
+  ·
+  <a href="https://github.com/jersonmejia452-hue/ClassSignal">Source code</a>
+  ·
+  <a href="#1-instalar-dependencias">Setup</a>
+</p>
 
 ClassSignal es un MVP educativo mobile-first para conocer el pulso de comprensión de una clase sin obligar a los estudiantes a identificarse al responder. El profesor organiza su trabajo por cursos, abre una clase dentro del curso, comparte un código corto o QR y recibe señales anónimas en tiempo real.
 
 El acceso estudiantil es híbrido: cualquier persona puede responder una clase sin cuenta, mientras que quien quiera conservar sus cursos puede iniciar sesión mediante un enlace mágico por correo. La cuenta permite matricularse, ver clases en vivo y consultar clases anteriores que el profesor haya publicado; nunca se adjunta a las respuestas del pulso.
 
 El modelo de navegación es **curso → clase (sesión) → pulsos → señales**. Un curso conserva el contexto académico y agrupa sus clases; cada clase mantiene un único código, enlace y QR, mientras sus pulsos separan mediciones sucesivas para comparar al grupo antes y después de una intervención docente.
+
+## Judge quick start
+
+Open the [two-minute guided demo](https://aula-clara-build-week.jerssonmejia779.chatgpt.site/demo). It requires no account, performs no database writes and makes no OpenAI API calls. The walkthrough includes 20 simulated students, two classroom pulses, a pre-generated GPT‑5.6 confusion map, a teacher micro-intervention and the aggregate follow-up comparison.
+
+To inspect the live student entry flow, open [Join a class](https://aula-clara-build-week.jerssonmejia779.chatgpt.site/unirse). Teacher authentication is intentionally separate; no personal credentials are published in this repository.
+
+## OpenAI Build Week project story
+
+### Inspiration
+
+Students often stay silent when they are confused: they may feel embarrassed, believe they are the only person who did not understand, or simply not know how to phrase a question. By the time that confusion becomes visible, the class has already moved on. ClassSignal began with a simple question: what if every student could send a low-friction, anonymous signal while there was still time for the teacher to respond?
+
+### What it does
+
+ClassSignal lets a teacher organize courses, open a live class and share one short code or QR. Students join from their phones without creating an account, select **I understand**, **I have a question** or **I am lost**, and may add an anonymous question. The teacher sees the distribution and new questions in real time.
+
+The teacher can run several pulses during the same class without changing the code. GPT‑5.6 turns the selected pulse into a structured confusion map, proposes a reviewable publication draft and can generate a short collective micro-intervention for one concept. A following pulse then shows the aggregate change; ClassSignal never claims that the intervention caused an individual result.
+
+### How we built it
+
+The mobile-first frontend uses React, Vite, TypeScript, Tailwind CSS, React Router, Zod and `qrcode.react`. Supabase provides email authentication, PostgreSQL, Realtime, Row Level Security and Edge Functions. Anonymous submissions pass through a server-side function protected with invisible Turnstile, rate limits and per-pulse HMAC pseudonyms. GPT‑5.6 is called only from authenticated Edge Functions through the OpenAI Responses API with strict JSON Schemas and `store: false`.
+
+### Challenges we ran into
+
+The hardest part was preserving genuine anonymity without turning the public endpoint into an abuse vector. Course enrollment and optional student accounts therefore remain completely separate from pulse responses. We also had to keep live state consistent while teachers opened, closed or switched pulses, prevent duplicate paid AI work, and treat student text as untrusted data while minimizing identifiers before generation.
+
+### Accomplishments that we are proud of
+
+We completed the full two-device classroom loop: course creation, QR entry, anonymous response, live dashboard, moderated question wall, GPT‑5.6 confusion map, teacher-controlled intervention and an aggregate follow-up comparison. The repository also includes a zero-cost guided demo with 20 simulated students, non-editable terminal AI records, usage and cost telemetry, quota enforcement, RLS policies, pgTAP database tests, frontend tests and offline model-output evaluations.
+
+### What we learned
+
+Anonymous feedback is most useful when it is not a one-time poll but a short feedback loop. Separating identity from participation protects trust, while explicit pulse boundaries make before/after summaries understandable. We also learned that a safe teaching copilot depends as much on product boundaries—review, confirmation, stale-result warnings and no automatic publishing—as it does on the prompt itself.
+
+### What's next for ClassSignal
+
+The next step is a small classroom pilot with teachers and students. We want to measure whether the pulse workflow changes teaching decisions, improve accessibility and multilingual support, let teachers attach learning objectives, expand the evaluation set across subjects, and explore privacy-preserving institutional trends only for sufficiently large cohorts.
+
+## How Codex and GPT‑5.6 were used
+
+Codex was a continuous engineering collaborator throughout the build, not a one-time code generator. We used it to inspect the existing repository, break work into vertical slices, implement and review React and Supabase changes, debug authentication and routing, design migrations and RLS policies, create test fixtures, run builds and evaluations, audit secrets, and verify the deployed backend. Changes were reviewed iteratively against the product flow and automated checks before final integration.
+
+GPT‑5.6 is also part of the product itself:
+
+- `gpt-5.6-luna` with `xhigh` reasoning generates the confusion map for a teacher-selected pulse;
+- `gpt-5.6-luna` with `medium` reasoning proposes a publication draft that is never applied or published automatically;
+- `gpt-5.6-luna` with `high` reasoning creates a 3–5 minute collective micro-intervention for a teacher-selected concept;
+- deterministic TypeScript—not the model—calculates the follow-up percentage-point comparison.
+
+The application omits account fields and response identifiers from model inputs, minimizes direct identifiers found in free text, validates structured outputs, treats classroom text as untrusted, disables provider storage, records token and cost estimates, and requires a teacher action before generation or publication. Students are also asked not to include personal information in an optional question.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  S["Student phone<br/>no account required"] --> UI["React mobile web app"]
+  P["Authenticated teacher"] --> UI
+  UI --> AUTH["Supabase Auth"]
+  UI --> SUBMIT["submit-response<br/>Turnstile + limits"]
+  SUBMIT --> DB["PostgreSQL<br/>RLS + pulse boundaries"]
+  DB --> RT["Supabase Realtime"]
+  RT --> UI
+  UI --> AI["Authenticated Edge Functions"]
+  AI --> DB
+  AI --> OAI["OpenAI Responses API<br/>GPT-5.6 Luna"]
+  OAI --> AI
+```
 
 ## Alcance de esta versión
 
@@ -42,7 +126,7 @@ Esta rebanada vertical incluye:
 - datos de demostración opcionales;
 - pruebas unitarias para códigos, respuestas, porcentajes y cálculo de costo.
 
-La IA no se ejecuta automáticamente: un profesor autenticado debe pulsar **Analizar pulso**. La Edge Function excluye correos, UUID de respuestas e identificadores anónimos, y envía a OpenAI únicamente el contexto académico, el estado de comprensión y el texto opcional de las dudas del pulso seleccionado. Snapshot, caché e historial quedan ligados a `pulse_id`; no se mezclan rondas. La solicitud usa `store: false`.
+La IA no se ejecuta automáticamente: un profesor autenticado debe pulsar **Analizar pulso**. La Edge Function omite campos de cuenta, UUID de respuestas e identificadores anónimos; envía a OpenAI únicamente el contexto académico, el estado de comprensión y el texto opcional, acotado y saneado, de las dudas del pulso seleccionado. Como una persona puede escribir información personal en lenguaje libre, la interfaz también pide no incluirla. Snapshot, caché e historial quedan ligados a `pulse_id`; no se mezclan rondas. La solicitud usa `store: false`.
 
 ### Ciclo de pulsos
 
@@ -60,7 +144,7 @@ El copiloto tiene tres piezas deliberadamente distintas:
 
 `generate-session-artifact` valida JWT, rol y propiedad, deriva las fuentes desde Supabase y reserva el trabajo mediante `create_session_ai_artifact`. Publicaciones usan sólo contexto académico, conteos/porcentajes, comparaciones y proyecciones de mapas completados; microintervenciones usan el agregado y el concepto seleccionado del mapa vigente. Las proyecciones eliminan `evidence`, textos individuales, correos, UUID, identificadores anónimos, matrículas, URLs y secretos antes de construir la solicitud. Los textos académicos se tratan como datos no confiables. Responses API usa `store:false`, JSON Schema estricto y no tiene fallback a un modelo más costoso.
 
-La tabla `session_ai_artifacts` conserva filas terminales inmutables, fingerprint, configuración efectiva, telemetría, costo estimado y un límite temporal conservador de las fuentes. Sólo el profesor propietario puede leerlas; el navegador no puede crear ni actualizar artefactos. Reserva y finalización comparten un bloqueo por objetivo para evitar trabajo pagado duplicado. Una fuente nueva marca visualmente el resultado como desactualizado y obliga a regenerar antes de aplicar o abrir el siguiente pulso.
+La tabla `session_ai_artifacts` conserva filas terminales no editables mientras existe la clase, además de fingerprint, configuración efectiva, telemetría, costo estimado y un límite temporal conservador de las fuentes. Sólo el profesor propietario puede leerlas; el navegador no puede crear ni actualizar artefactos. Reserva y finalización comparten un bloqueo por objetivo para evitar trabajo pagado duplicado. Una fuente nueva marca visualmente el resultado como desactualizado y obliga a regenerar antes de aplicar o abrir el siguiente pulso.
 
 ## Stack
 
@@ -73,9 +157,23 @@ La tabla `session_ai_artifacts` conserva filas terminales inmutables, fingerprin
 - `qrcode.react`
 - Zod
 
+## Verification snapshot
+
+Verification completed on **July 21, 2026** against the final release candidate:
+
+| Check | Result |
+| --- | --- |
+| `npm test -- --run` | 287 tests passed across 41 files |
+| `npm run test:evals` | 9 offline evaluation tests passed; no API key or network used |
+| `npm run build` | TypeScript and the production client/server builds completed successfully |
+| Supabase migrations | The quota-ledger hardening migration and its pgTAP coverage are included; database tests remain local-only |
+| Supabase Edge Functions | `analyze-session`, `submit-response` and `generate-session-artifact` are active |
+
+The pgTAP suites under `supabase/tests/database` require a running local Supabase stack and can be executed with `npm run test:db`. They are intentionally not run against a production database.
+
 ## Requisitos
 
-- Node.js `^20.19.0` o `>=22.12.0`
+- Node.js `>=22.13.0` (Node 24 también es compatible)
 - npm
 - una cuenta y un proyecto vacío de Supabase
 - un widget invisible de Cloudflare Turnstile para los envíos anónimos
@@ -118,8 +216,8 @@ Las migraciones crean:
 - RPC autenticadas y acotadas para matricularse, listar cursos propios y consultar solo el archivo publicado de una clase;
 - una RPC docente que devuelve únicamente el conteo de matrículas del curso propio;
 - la publicación de `public.responses` en `supabase_realtime`;
-- `public.session_analyses`, con historial inmutable, caché de snapshots y lectura limitada al profesor propietario;
-- `public.session_ai_artifacts`, con historial inmutable de borradores e intervenciones, RLS docente y escritura exclusiva de `service_role`;
+- `public.session_analyses`, con registros terminales no editables, caché de snapshots y lectura limitada al profesor propietario;
+- `public.session_ai_artifacts`, con registros terminales no editables de borradores e intervenciones, RLS docente y mutaciones canalizadas por RPC exclusivas de servidor;
 - telemetría de tokens/costo y cuotas atómicas de análisis;
 - RPC exclusivas de `service_role` para reservar y finalizar artefactos bajo caché, deduplicación y cuotas compartidas con los análisis;
 - una RPC exclusiva de `service_role` para aceptar respuestas desde la Edge Function sin conceder `INSERT` al navegador anónimo.
@@ -555,6 +653,13 @@ No uses esa dirección de ejemplo literalmente; reemplázala por la IP local rea
 ### El seed no crea la sesión `AULA24`
 
 Crea primero un perfil docente mediante Supabase Auth y promoción administrativa, y aplica todas las migraciones, incluida la que crea `public.session_pulses`. Si hay varios profesores, la sesión pertenece al perfil docente más antiguo. Comprueba que `AULA24` tenga un pulso con `ordinal = 1`; el seed no inventa uno si el trigger no se ejecutó. Revisa también los avisos del SQL Editor por una posible colisión previa del código o del identificador de demo.
+
+## Recursos de marca y entrega
+
+- [Logo cuadrado de ClassSignal](public/brand/classsignal-hackathon-logo.png): PNG de 1254 × 1254, aproximadamente 0,84 MiB y apto para el límite de 5 MB de la entrega.
+- [Pantalla final para el video](public/brand/classsignal-video-end-card.png): PNG 16:9 de 1672 × 941, aproximadamente 1,17 MiB, con el eslogan **Every signal shapes the lesson.**
+
+Estos archivos no contienen credenciales ni son necesarios para ejecutar la aplicación. Son recursos de presentación que pueden subirse a Devpost y utilizarse en el video.
 
 ## Guion corto de demostración
 

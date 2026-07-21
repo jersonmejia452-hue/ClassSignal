@@ -205,6 +205,11 @@ export function PublicationAiDraftPanel({
     window.requestAnimationFrame(() => document.getElementById(generateButtonId)?.focus())
   }
 
+  const confirmApply = () => {
+    if (actionsDisabled || isStale) return
+    onConfirmApply()
+  }
+
   return (
     <section
       aria-labelledby={titleId}
@@ -441,8 +446,8 @@ export function PublicationAiDraftPanel({
             </Button>
             <Button
               className="w-full sm:w-auto"
-              disabled={isStale}
-              onClick={onConfirmApply}
+              disabled={actionsDisabled || isStale}
+              onClick={confirmApply}
             >
               Sí, aplicar localmente
             </Button>
